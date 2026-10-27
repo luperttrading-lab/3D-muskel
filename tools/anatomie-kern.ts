@@ -339,6 +339,61 @@ export function backe(g: 'm' | 'w', N = 2048): Ergebnis {
     }
   }
 
+  // ---------- 2b. Faserverlauf je Muskel an den Gliedmaßen ----------
+  // Statt stur parallel zur Gliedachse: Spindel (Fasern laufen zu beiden Sehnen zusammen), Delta (Deltamuskel bündelt
+  // sich zum Ansatz am Oberarm), gefiedert (Fasern schräg zu einer Sehne: doppelt mit Mittelsehne, einfach einseitig).
+  type Art = 'spindel' | 'delta' | 'doppelt' | 'einfach';
+  const AUFBAU: Record<string, [ReturnType<typeof glied>, Art, number]> = {   // Glied, Art, Richtung bei »einfach«
+    delt_v: [oberarm, 'delta', 0], delt_s: [oberarm, 'delta', 0], delt_h: [oberarm, 'delta', 0],
+    bizeps: [oberarm, 'spindel', 0], brachialis: [oberarm, 'spindel', 0], trizeps: [oberarm, 'spindel', 0],
+    brachiorad: [unterarm, 'spindel', 0], ua_beuger: [unterarm, 'spindel', 0], ua_strecker: [unterarm, 'spindel', 0],
+    rect_fem: [oberschenkel, 'doppelt', 0], vast_lat: [oberschenkel, 'einfach', 1], vast_med: [oberschenkel, 'einfach', -1],
+    hamstrings: [oberschenkel, 'spindel', 0],
+    gastro: [unterschenkel, 'doppelt', 0], soleus: [unterschenkel, 'doppelt', 0], tibialis: [unterschenkel, 'einfach', 1],
+  };
+  {
+    const gruppeVon = new Int32Array(NN2).fill(-1), lage = new Float32Array(NN2 * 3);
+    const nr = new Map<string, number>(), stat: { cs: number; sn: number; ts: number[] }[] = [];
+    for (let i = 0; i < NN2; i++) {
+      const e = einheit[i];
+      if (dreieck[i] < 0 || !e) continue;
+      const id = idVon(e), a = AUFBAU[id];
+      if (!a) continue;
+      const p: V3 = [Math.abs(pos[3 * i]), pos[3 * i + 1], pos[3 * i + 2]], { t, w, radius } = imGlied(a[0], p);
+      // Deltamuskel als ein Fächer, sonst je Muskelkopf (Bizeps, Trizeps, Wade, Beinbeuger) eigener Verlauf
+      const k = id.startsWith('delt_') ? `delt|${pos[3 * i] >= 0 ? 'L' : 'R'}` : String(teil[i]);
+      let g = nr.get(k);
+      if (g === undefined) { g = stat.length; nr.set(k, g); stat.push({ cs: 0, sn: 0, ts: [] }); }
+      stat[g].cs += Math.cos(w); stat[g].sn += Math.sin(w); stat[g].ts.push(t);
+      gruppeVon[i] = g; lage[3 * i] = t; lage[3 * i + 1] = w; lage[3 * i + 2] = radius;
+    }
+    const mitte = stat.map(st => {
+      st.ts.sort((a, b) => a - b);
+      const n = st.ts.length, t0 = st.ts[Math.floor(0.01 * n)], t1 = st.ts[Math.min(n - 1, Math.floor(0.99 * n))];
+      return { wc: Math.atan2(st.sn, st.cs), t0, t1: t1 > t0 + 0.02 ? t1 : t0 + 0.02 };
+    });
+    const DICHTE = 190, SCHRAEG = 0.38;
+    for (let i = 0; i < NN2; i++) {
+      const g = gruppeVon[i];
+      if (g < 0) continue;
+      const id = idVon(einheit[i]), [gl, art, richtung] = AUFBAU[id], m = mitte[g];
+      const t = lage[3 * i], dw = Math.atan2(Math.sin(lage[3 * i + 1] - m.wc), Math.cos(lage[3 * i + 1] - m.wc));
+      const bogen = dw * lage[3 * i + 2], sl = Math.min(1, Math.max(0, (t - m.t0) / (m.t1 - m.t0))), laengs = (t - m.t0) * gl.laenge;
+      let ph: number;
+      if (art === 'spindel') ph = bogen * DICHTE / (0.42 + 0.58 * Math.sin(Math.PI * sl) ** 0.7);
+      else if (art === 'delta') ph = bogen * DICHTE / (0.28 + 0.72 * (1 - sl ** 1.6));
+      else {
+        const breit = 0.62 + 0.38 * Math.sin(Math.PI * sl) ** 0.7;
+        ph = art === 'doppelt'
+          ? DICHTE * (Math.abs(bogen) * Math.cos(SCHRAEG) / breit + laengs * Math.sin(SCHRAEG))
+          : DICHTE * (bogen * Math.cos(SCHRAEG) / breit + richtung * laengs * Math.sin(SCHRAEG));
+        // Mittelsehne des geraden Quadrizeps als feiner heller Streifen in der unteren Hälfte
+        if (id === 'rect_fem') sehne[i] = Math.max(sehne[i], 0.55 * (1 - glatt(0.0012, 0.003, Math.abs(bogen))) * glatt(0.3, 0.6, sl));
+      }
+      phase[i] = ph;
+    }
+  }
+
   // ---------- 3. Grenzen: Wechsel von Einheit oder Unterteilung zum Nachbartexel ----------
   const staerke = (ta: number, tb: number) => {
     const ea = ta >> 4, eb = tb >> 4;
@@ -430,7 +485,7 @@ export function backe(g: 'm' | 'w', N = 2048): Ergebnis {
 
   // ---------- 4b. Wölbung je Muskel glätten ----------
   // Das Abstandsfeld zur nächsten Grenze hat Grate (Dachform, Pyramiden auf dem Sixpack). Gauß-Glättung im
-  // Texturraum, nur innerhalb derselben Einheit, rundet die Bäuche ab; die Furche bleibt scharf (eigener Term).
+  // Texturraum, nur innerhalb desselben Muskelteils, rundet die Bäuche ab; die Furche bleibt scharf (eigener Term).
   const wolb = new Float32Array(NN2), tmp = new Float32Array(NN2);
   for (let i = 0; i < NN2; i++) if (dreieck[i] >= 0) wolb[i] = 1 - (1 - Math.min(1, abstand[i] / 0.032)) ** 2.2;
   const R = 12, kern = Array.from({ length: 2 * R + 1 }, (_, k) => Math.exp(-(((k - R) / 6) ** 2) / 2));
@@ -443,7 +498,7 @@ export function backe(g: 'm' | 'w', N = 2048): Ergebnis {
         const xx = schritt === 1 ? px + k : px, yy = schritt === 1 ? py : py + k;
         if (xx < 0 || yy < 0 || xx >= N || yy >= N) continue;
         const j = yy * N + xx;
-        if (dreieck[j] < 0 || einheit[j] !== einheit[i]) continue;
+        if (dreieck[j] < 0 || teil[j] !== teil[i]) continue;   // je Muskelteil: Zacken, Köpfe, Segmente eigene Polster
         sw += kern[k + R]; sv += kern[k + R] * quelle[j];
       }
       ziel[i] = sw > 0 ? sv / sw : quelle[i];

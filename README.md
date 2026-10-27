@@ -119,7 +119,9 @@ zur Laufzeit färbt die App darüber Entwicklung und Auswahl, und ein Tipp triff
 Muskelgrenzen sind Furchen im Relief statt gezeichneter Linien; helle Faszie gibt es nur an Linea alba, Mittellinien und den
 Sehnenzügen des Sixpacks. Fasern sind gezeichnete Stränge mit eigener Helligkeit (in der Farbe, nicht im Relief, damit sie
 nicht glitzern; wo die Textur zu grob ist, doppelt so breit), Sehnenübergänge fiedern aus. Die Reliefkarte trägt im
-Grünkanal die Furchentiefe, damit Furchen kein Glanzlicht fangen. Muskelgewebe bekommt im
+Grünkanal die Furchentiefe, damit Furchen kein Glanzlicht fangen.
+An den Gliedmaßen folgt der Faserverlauf dem Muskelbau: Spindel (Bizeps, Unterarm, Beinbeuger), Fächer zum Ansatz
+(Deltamuskel), gefiedert (gerader Quadrizeps mit Mittelsehne, seitlicher und innerer Quadrizeps, Wade). Muskelgewebe bekommt im
 Shader einen feuchten Glanz, Sehnen bleiben seidenmatt.
 
 ## Lizenz der Körpermodelle
