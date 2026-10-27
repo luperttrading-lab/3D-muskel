@@ -39,8 +39,9 @@ function Ansicht({ g, azimut }: { g: Geschlecht; azimut: number }) {
   if (!daten) return <div className="text-slate-400 p-4">lädt …</div>;
   return (
     <Buehne groesse={daten.groesse} akzent={g === 'm' ? '#2f8bff' : '#ff3fa4'} startAzimut={azimut} abstand={q.has('abstand') ? zahl('abstand', 4) : undefined}
-      ziel={q.has('hoehe') ? { hoehe: zahl('hoehe', 1), abstand: zahl('abstand', 4), azimut, schluessel } : undefined} className="w-full h-full">
-      <AvatarModell daten={daten} zustand={zustand} darstellung={(q.get('modus') as Darstellung) ?? 'atlas'} auswahl={auswahlAusUrl()} hautton="hell" akzent={g === 'm' ? '#2f8bff' : '#ff3fa4'} gluehStart={-1e9} bewegung={false} pose={q.get('pose') !== '0'} />
+      ziel={q.has('hoehe') ? { hoehe: zahl('hoehe', 1), abstand: zahl('abstand', 4), azimut, schluessel } : undefined} className="w-full h-full"
+      schatten={q.get('schatten') !== '0'}>
+      <AvatarModell daten={daten} zustand={zustand} darstellung={(q.get('modus') as Darstellung) ?? 'atlas'} auswahl={auswahlAusUrl()} hautton="hell" akzent={g === 'm' ? '#2f8bff' : '#ff3fa4'} gluehStart={-1e9} bewegung={false} pose={q.get('pose') !== '0'} aoStaerke={zahl('ao', 0.85)} />
     </Buehne>
   );
 }

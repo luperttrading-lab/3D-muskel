@@ -37,6 +37,7 @@ export interface KoerperDaten {
   gelenke: Record<string, [number, number, number]>;
   skelett?: Knochen[];     // vereinfachtes Skelett für die lockere Haltung
   haut?: Haut;             // Knochengewichte je gemeinsamem Punkt
+  ao?: Uint8Array;         // gebackene Umgebungsverdeckung je gemeinsamem Punkt (255 = frei), optional
 }
 
 function base64ZuBytes(b64: string): Uint8Array {
@@ -94,9 +95,14 @@ export function entpacke(roh: RohDaten): KoerperDaten {
 const cache = new Map<Geschlecht, Promise<KoerperDaten>>();
 export function ladeKoerper(g: Geschlecht, basis = import.meta.env.BASE_URL): Promise<KoerperDaten> {
   if (!cache.has(g)) {
+    // Umgebungsverdeckung ist Zugabe: fehlt die Datei, bleibt der Körper ohne
+    const ao = fetch(`${basis}modelle/ao-${g}.bin`).then(r => (r.ok ? r.arrayBuffer() : null)).then(b => (b ? new Uint8Array(b) : undefined)).catch(() => undefined);
     cache.set(g, fetch(`${basis}modelle/koerper-${g}.json`).then(async r => {
       if (!r.ok) throw new Error(`Körperdaten nicht geladen (HTTP ${r.status})`);
-      return entpacke(await r.json() as RohDaten);
+      const d = entpacke(await r.json() as RohDaten);
+      const a = await ao;
+      if (a && a.length === d.koerper.punkte) d.ao = a;
+      return d;
     }).catch(e => { cache.delete(g); throw e; }));
   }
   return cache.get(g)!;
