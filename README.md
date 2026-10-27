@@ -47,7 +47,7 @@ in den Vordergrund, ob eine neue Fassung da ist; ein Tipp auf die gepunktete Ver
 | Avatar | MakeHuman-Körper (Mann 1,79 m, Frau 1,66 m), Haut in drei Tönen, Haare, Augen, Brauen, Wimpern; Shorts bzw. Shorts + Bustier per Shader; lockere Haltung über ein vereinfachtes MakeHuman-Skelett (Linear Blend Skinning nach der Muskelverformung) |
 | Verformung | je Muskel und Seite eigene Maske; Mischung aus 3 × 3 Muskel-/Fett-Formen; Pump als kurzzeitiger Zuschlag |
 | Training | Pläne (Ganzkörper, Push, Pull, Legs, …), 43 Übungen mit Muskelkoeffizienten, Seite (beide/links/rechts), Gewicht, Wiederholungen, RIR, Schmerz-Markierung |
-| Muskelatlas | Tabs Vorne/Hinten/Seite, Gruppenleiste (Brust bis Waden), Darstellungen *Haut*, *Entwicklung* (Farbskala), *Anatomie* (Faserverlauf, Faszienlinien, Sehnenzüge); Muskel antippen → Funktion primär/sekundär, Entwicklungsstand links/rechts, beteiligte Übungen |
+| Muskelatlas | Tabs Vorne/Hinten/Seite, Gruppenleiste (Brust bis Waden), Darstellungen *Haut*, *Entwicklung* (Farbskala), *Anatomie* (gebackenes Texturpaket: Muskelformen, Faserverlauf, Faszienlinien, Sehnenplatten, Relief); Muskel antippen → Funktion primär/sekundär, Entwicklungsstand links/rechts, beteiligte Übungen |
 | Evolution | Vorher/Nachher-Vergleich, Rang (Lauch → Adonis → Beast), Archetypen mit Hysterese, Verläufe je Muskel |
 | Coach ATLAS | regelbasiert, vier Stile (Kumpel, Drill, Wissenschaftler, Game-Master); stellt keine Diagnosen |
 | Daten | IndexedDB (Dexie), Rückfall auf localStorage; Export/Import als JSON; alles bleibt auf dem Gerät |
@@ -103,6 +103,26 @@ MH_DATA=/pfad/makehuman/data MH_SYSTEM=/pfad/makehuman-system-assets npm run ass
 `MH_DATA` ist der `data`-Ordner aus dem MakeHuman-Repository (Basisnetz `hm08`, Targets, Hilfsgruppen,
 `rigs/default.mhskel` und `rigs/default_weights.mhw` für die Haltung),
 `MH_SYSTEM` das System-Asset-Paket (Haut, Haare, Augen, Brauen, Wimpern).
+
+### Anatomie-Texturpaket
+
+Die Anatomie-Ansicht nutzt je Geschlecht drei Texturen in `public/modelle/` (`anatomie-{m,w}-farbe.jpg`,
+`-hoehe.png`, `-karte.png`). Sie werden ohne Grafikprogramm aus dem Körpernetz und den Muskelmasken gebacken:
+
+```sh
+npm run anatomie     # tools/anatomie-backen.mjs, etwa 30 s je Geschlecht, braucht python3 mit Pillow
+```
+
+`tools/anatomie-kern.ts` wertet je Texel die Masken aus und schneidet die sichtbaren Muskeln nach ihrer echten Form zu
+(Brust, Trapez, Lat, Beckenkamm, Leistenband, Gesäß, Deltamuskel, Wade …). Die Karte trägt je Texel die Einheit;
+zur Laufzeit färbt die App darüber Entwicklung und Auswahl, und ein Tipp trifft den Muskel texelgenau.
+Muskelgrenzen sind Furchen im Relief statt gezeichneter Linien; helle Faszie gibt es nur an Linea alba, Mittellinien und den
+Sehnenzügen des Sixpacks. Fasern sind gezeichnete Stränge mit eigener Helligkeit (in der Farbe, nicht im Relief, damit sie
+nicht glitzern; wo die Textur zu grob ist, doppelt so breit), Sehnenübergänge fiedern aus. Die Reliefkarte trägt im
+Grünkanal die Furchentiefe, damit Furchen kein Glanzlicht fangen.
+An den Gliedmaßen folgt der Faserverlauf dem Muskelbau: Spindel (Bizeps, Unterarm, Beinbeuger), Fächer zum Ansatz
+(Deltamuskel), gefiedert (gerader Quadrizeps mit Mittelsehne, seitlicher und innerer Quadrizeps, Wade). Muskelgewebe bekommt im
+Shader einen feuchten Glanz, Sehnen bleiben seidenmatt.
 
 ## Lizenz der Körpermodelle
 

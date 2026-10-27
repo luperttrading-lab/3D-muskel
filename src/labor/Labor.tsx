@@ -19,6 +19,9 @@ function farbeFuer(i: number): [number, number, number] {
 function Ansicht({ g, azimut }: { g: Geschlecht; azimut: number }) {
   const [daten, setDaten] = useState<KoerperDaten>();
   useEffect(() => { ladeKoerper(g).then(setDaten); }, [g]);
+  // Kameraziel erst nach dem Aufbau setzen: die Bühne überspringt ein schon beim Aufbau vorhandenes Ziel
+  const [schluessel, setSchluessel] = useState(0);
+  useEffect(() => { if (daten) { const t = setTimeout(() => setSchluessel(1), 100); return () => clearTimeout(t); } }, [daten]);
   const zustand = useMemo<AvatarZustand>(() => {
     // mus=… : Muskelwert je Einheit (Index 0 = Rest des Körpers), z. B. aus einer Engine-Simulation
     const liste = q.get('mus')?.split(',').map(Number);
@@ -36,7 +39,7 @@ function Ansicht({ g, azimut }: { g: Geschlecht; azimut: number }) {
   if (!daten) return <div className="text-slate-400 p-4">lädt …</div>;
   return (
     <Buehne groesse={daten.groesse} akzent={g === 'm' ? '#2f8bff' : '#ff3fa4'} startAzimut={azimut} abstand={q.has('abstand') ? zahl('abstand', 4) : undefined}
-      ziel={q.has('hoehe') ? { hoehe: zahl('hoehe', 1), abstand: zahl('abstand', 4), azimut, schluessel: 1 } : undefined} className="w-full h-full">
+      ziel={q.has('hoehe') ? { hoehe: zahl('hoehe', 1), abstand: zahl('abstand', 4), azimut, schluessel } : undefined} className="w-full h-full">
       <AvatarModell daten={daten} zustand={zustand} darstellung={(q.get('modus') as Darstellung) ?? 'atlas'} auswahl={auswahlAusUrl()} hautton="hell" akzent={g === 'm' ? '#2f8bff' : '#ff3fa4'} gluehStart={-1e9} bewegung={false} pose={q.get('pose') !== '0'} />
     </Buehne>
   );
