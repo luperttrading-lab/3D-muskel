@@ -103,11 +103,19 @@ export function berechneMasken(netz: FormNetz, gelenke: Record<string, V3>): Mas
     const us = inGlied(unterschenkel, p, nv);
     const beinOben = fenster(os.t, 0.08, 0.97, 0.06) * unter(os.radius, 0.13, 0.02);
     const beinUnten = fenster(us.t, 0.04, 0.86, 0.05) * unter(us.radius, 0.09, 0.015);
-    add('rect_fem', beinOben * ueber(os.nf, 0.72, 0.12) * fenster(os.t, 0.1, 0.85, 0.08));
-    add('vast_lat', beinOben * ueber(os.nl, 0.15, 0.2) * ueber(os.nf, -0.35, 0.2) * fenster(os.t, 0.12, 0.92, 0.08));
-    add('vast_med', beinOben * unter(os.nl, -0.05, 0.2) * ueber(os.nf, 0.05, 0.2) * fenster(os.t, 0.52, 0.98, 0.07));
-    add('adduktoren', beinOben * unter(os.nl, -0.3, 0.2) * fenster(os.nf, -0.6, 0.45, 0.2) * fenster(os.t, 0.0, 0.62, 0.08));
-    add('hamstrings', beinOben * unter(os.nf, -0.3, 0.2) * fenster(os.t, 0.18, 0.95, 0.07));
+    // Schneidermuskel: schmales Band vom vorderen Beckenkamm schräg über den Oberschenkel nach innen hinter das Knie.
+    // Winkel um die Oberschenkelachse: 0 = vorn, + = außen, − = innen
+    // Lage um die Achse aus der Position (nicht der Normale), damit das Band glatt verläuft
+    const dS = sub(p, oberschenkel.a), rS = sub(dS, oberschenkel.u.map(x => x * dot(dS, oberschenkel.u)) as V3);
+    const winkel = Math.atan2(dot(rS, oberschenkel.l), dot(rS, oberschenkel.f)), bahn = 0.55 - 2.5 * os.t;
+    const sart = fenster(os.t, 0.04, 0.97, 0.05) * unter(os.radius, 0.16, 0.02) * unter(Math.abs(winkel - bahn), 0.2, 0.12);
+    add('sartorius', sart);
+    const nebenSart = 1 - 0.85 * sart;
+    add('rect_fem', nebenSart * beinOben * ueber(os.nf, 0.62, 0.12) * fenster(os.t, 0.1, 0.85, 0.08));
+    add('vast_lat', nebenSart * beinOben * ueber(os.nl, 0.15, 0.2) * ueber(os.nf, -0.35, 0.2) * fenster(os.t, 0.12, 0.92, 0.08));
+    add('vast_med', nebenSart * beinOben * unter(os.nl, -0.05, 0.2) * ueber(os.nf, 0.05, 0.2) * fenster(os.t, 0.52, 0.98, 0.07));
+    add('adduktoren', nebenSart * beinOben * unter(os.nl, -0.18, 0.2) * fenster(os.nf, -0.6, 0.6, 0.2) * fenster(os.t, 0.0, 0.66, 0.08));
+    add('hamstrings', nebenSart * beinOben * unter(os.nf, -0.3, 0.2) * fenster(os.t, 0.18, 0.95, 0.07));
     add('gastro', beinUnten * unter(us.nf, -0.15, 0.2) * fenster(us.t, 0.06, 0.55, 0.07));
     add('soleus', beinUnten * unter(us.nf, 0.1, 0.3) * fenster(us.t, 0.42, 0.86, 0.07) * (us.nf < -0.5 ? 0.6 : 1));
     add('tibialis', beinUnten * ueber(us.nf, 0.25, 0.2) * ueber(us.nl, -0.15, 0.2) * fenster(us.t, 0.1, 0.8, 0.07));
@@ -117,15 +125,15 @@ export function berechneMasken(netz: FormNetz, gelenke: Record<string, V3>): Mas
     const rumpf = 1 - Math.min(1, glied_);
     const u = p[0] / W, v = (p[1] - yB) / hoeheRumpf;
     const [nx, ny, nz] = nv;
-    add('brust_o', rumpf * ueber(nz, 0.25, 0.2) * fenster(u, 0.04, 0.88, 0.06) * fenster(v, 0.72, 0.86, 0.04));
+    add('brust_o', rumpf * ueber(nz, 0.25, 0.2) * fenster(u, 0.04, 0.95, 0.06) * fenster(v, 0.72, 0.9, 0.04));
     add('brust_u', rumpf * ueber(nz, 0.2, 0.2) * fenster(u, 0.04, 0.9, 0.06) * fenster(v, 0.5, 0.73, 0.05));
     add('serratus', rumpf * ueber(nx, 0.35, 0.2) * ueber(nz, -0.15, 0.2) * fenster(v, 0.42, 0.62, 0.05) * ueber(u, 0.55, 0.08));
     add('bauch_g', rumpf * ueber(nz, 0.4, 0.2) * fenster(u, -0.1, 0.3, 0.06) * fenster(v, -0.1, 0.5, 0.05));
-    add('bauch_s', rumpf * ueber(nz, -0.3, 0.25) * fenster(u, 0.32, 1.1, 0.07) * fenster(v, -0.02, 0.47, 0.05));
-    add('lat', rumpf * unter(nz, 0.15, 0.2) * fenster(u, 0.25, 1.1, 0.08) * fenster(v, 0.3, 0.78, 0.05));
+    add('bauch_s', rumpf * ueber(nz, -0.3 - 0.45 * unter(v, 0.3, 0.06), 0.25) * fenster(u, 0.32, 1.1, 0.07) * fenster(v, -0.02, 0.47, 0.05));
+    add('lat', rumpf * unter(nz, 0.15, 0.2) * fenster(u, 0.25, 1.1, 0.08) * fenster(v, 0.08, 0.78, 0.05));
     add('trapez_m', rumpf * unter(nz, -0.3, 0.2) * fenster(u, -0.1, 0.55, 0.07) * fenster(v, 0.58, 0.9, 0.05));
-    add('trapez_o', rumpf * (ueber(ny, 0.25, 0.2) + unter(nz, -0.2, 0.2)) * 0.6 * fenster(u, 0.06, 0.85, 0.07) * fenster(v, 0.86, 1.07, 0.04));
-    add('strecker', rumpf * unter(nz, -0.4, 0.2) * fenster(u, -0.1, 0.28, 0.06) * fenster(v, -0.05, 0.62, 0.05));
+    add('trapez_o', rumpf * (ueber(ny, 0.25, 0.2) + unter(nz, -0.2, 0.2)) * 0.6 * fenster(u, 0.06, 0.98, 0.07) * fenster(v, 0.83, 1.07, 0.04));
+    add('strecker', rumpf * unter(nz, -0.4, 0.2) * fenster(u, -0.1, 0.32, 0.06) * fenster(v, -0.05, 0.62, 0.05));
     // Gesäß: unterhalb des Beckens, rückwärts gerichtet
     const ug = p[0] / (huefte[0] + 0.09), vg = (p[1] - (huefte[1] - 0.15)) / 0.27;
     const gesaess = (1 - Math.min(1, beinUnten + armOben + armUnten)) * (1 - 0.7 * beinOben * ueber(os.t, 0.32, 0.06));
@@ -159,4 +167,181 @@ export function berechneMasken(netz: FormNetz, gelenke: Record<string, V3>): Mas
 // Hauptmuskel je Punkt (für Farbe der Atlas-Ansicht und Auswahl per Antippen)
 export function hauptEinheit(m: Masken, i: number, schwelle = 0.25): number {
   return m.gewicht[i * MAX_JE_PUNKT] >= schwelle ? m.einheit[i * MAX_JE_PUNKT] : 0;
+}
+
+// Zusatzdaten für die Anatomie-Ansicht: Faserphase je Punkt (Streifen entlang der Muskelfasern), Furchen an
+// Muskelgrenzen und der Anteil des geraden Bauchmuskels (für die Sehnenzüge des Sixpacks).
+export interface Anatomie {
+  phase: Float32Array;    // Koordinate quer zur Faser in »Streifen«: sin(2π·phase) zeichnet die Fasern
+  rille: Float32Array;    // 0 = mitten im Muskel, 1 = Grenze zwischen zwei Muskeln oder Muskel und Sehne
+  rilleHaut: Float32Array; // nur Grenzen, die man bei wenig Fett durch die Haut sieht (Muskel an Muskel)
+  klassen: Float32Array;  // punkte × 8: Gewicht je Farbklasse (Nachbarmuskeln haben verschiedene Klassen, 7 = Sehne/Haut)
+  bauch: Float32Array;    // Gewicht des geraden Bauchmuskels
+  serratus: Float32Array; // Gewicht des Sägemuskels (für seine Zacken)
+}
+
+const FASERN_JE_METER = 75;
+
+// Faserverlauf: entlang einer Achse (Gliedmaßen, gerade Rumpfmuskeln) oder fächerförmig zu einem Ansatz
+type Verlauf = { art: 'achse'; a: V3; u: V3; radius: number } | { art: 'faecher'; z: V3; ebene: V3 };
+
+export function berechneAnatomie(netz: FormNetz, gelenke: Record<string, V3>, m: Masken, idVon: (einheit: number) => string): Anatomie {
+  const n = netz.punkte, P = netz.grund;
+  const J = (name: string): V3 => gelenke[name];
+  const schulter = J('l-shoulder'), ellbogen = J('l-elbow'), hand = J('l-hand');
+  const huefte = J('l-upper-leg'), knie = J('l-knee'), knoechel = J('l-ankle'), becken = J('pelvis');
+  const W = schulter[0], zMitte = becken[2];
+  const plus = (a: V3, b: V3, k = 1): V3 => [a[0] + k * b[0], a[1] + k * b[1], a[2] + k * b[2]];
+  const achse = (a: V3, b: V3, radius: number): Verlauf => ({ art: 'achse', a, u: norm(sub(b, a)), radius });
+  const fest = (u: V3, a: V3, radius: number): Verlauf => ({ art: 'achse', a, u: norm(u), radius });
+  const faecher = (z: V3, ebene: V3): Verlauf => ({ art: 'faecher', z, ebene: norm(ebene) });
+  const rumpf: V3 = [0, becken[1], zMitte];
+  const trochanter: V3 = [huefte[0] + 0.07, huefte[1] - 0.1, huefte[2] - 0.02];
+  const VERLAUF: Record<string, Verlauf> = {
+    delt_v: achse(schulter, ellbogen, 0.06), delt_s: achse(schulter, ellbogen, 0.06), delt_h: achse(schulter, ellbogen, 0.06),
+    bizeps: achse(schulter, ellbogen, 0.05), trizeps: achse(schulter, ellbogen, 0.05), brachialis: achse(schulter, ellbogen, 0.05),
+    brachiorad: achse(ellbogen, hand, 0.04), ua_beuger: achse(ellbogen, hand, 0.04), ua_strecker: achse(ellbogen, hand, 0.04),
+    rect_fem: achse(huefte, knie, 0.08), sartorius: achse(huefte, knie, 0.08), vast_lat: achse(huefte, knie, 0.08), vast_med: achse(huefte, knie, 0.08), hamstrings: achse(huefte, knie, 0.08),
+    adduktoren: faecher(plus(huefte, sub(knie, huefte), 0.55), [-1, 0, 0]),
+    gastro: achse(knie, knoechel, 0.055), soleus: achse(knie, knoechel, 0.055), tibialis: achse(knie, knoechel, 0.055),
+    brust_o: faecher([schulter[0], schulter[1] - 0.02, schulter[2] + 0.04], [0, 0, 1]),
+    brust_u: faecher([schulter[0], schulter[1] - 0.06, schulter[2] + 0.04], [0, 0, 1]),
+    serratus: faecher([W * 0.5, schulter[1] - 0.1, schulter[2] - 0.12], [1, 0, 0]),
+    bauch_g: fest([0, 1, 0], rumpf, 0.16), strecker: fest([0, 1, 0], rumpf, 0.16),
+    bauch_s: fest([0.6, 0.8, 0.15], rumpf, 0.15),
+    lat: faecher([W * 0.85, schulter[1] - 0.1, schulter[2] - 0.04], [0, 0, -1]),
+    trapez_o: faecher(schulter, [0, 0.4, -1]), trapez_m: fest([1, 0.25, 0], [0, schulter[1] - 0.1, zMitte], 0.12),
+    glut_max: faecher(trochanter, [0, 0, -1]), glut_med: faecher(trochanter, [1, 0, 0]),
+  };
+
+  // Mitte jedes Muskels (linke Seite, gespiegelt) als Bezug für die Fächerwinkel
+  const mitte = new Map<string, [number, number, number, number]>();
+  for (let i = 0; i < n; i++) {
+    if (m.gewicht[i * MAX_JE_PUNKT] < 0.5) continue;
+    const id = idVon(m.einheit[i * MAX_JE_PUNKT]), s = mitte.get(id) ?? [0, 0, 0, 0];
+    s[0] += Math.abs(P[3 * i]); s[1] += P[3 * i + 1]; s[2] += P[3 * i + 2]; s[3]++;
+    mitte.set(id, s);
+  }
+  const bezug = new Map<string, { e1: V3; e2: V3; r: number }>();
+  for (const [id, v] of Object.entries(VERLAUF)) {
+    const c = mitte.get(id);
+    if (v.art !== 'faecher' || !c) continue;
+    const d = sub([c[0] / c[3], c[1] / c[3], c[2] / c[3]], v.z);
+    const flach = sub(d, v.ebene.map(x => x * dot(d, v.ebene)) as V3);
+    const e1 = norm(flach);
+    bezug.set(id, { e1, e2: norm(cross(v.ebene, e1)), r: Math.hypot(...flach) });
+  }
+  // Fester Querbezug je Achse, damit der Umfangswinkel stetig bleibt
+  const quer = (u: V3): V3 => norm(Math.abs(u[2]) < 0.9 ? cross(u, [0, 0, 1]) : cross(u, [1, 0, 0]));
+
+  const phase = new Float32Array(n), rille = new Float32Array(n), bauch = new Float32Array(n), serratus = new Float32Array(n);
+  const herr = new Int16Array(n);   // stärkster Anteil je Punkt (0 = Sehne/Haut)
+  for (let i = 0; i < n; i++) {
+    const x = P[3 * i], p: V3 = [Math.abs(x), P[3 * i + 1], P[3 * i + 2]];
+    const gewichte: [number, number][] = [];
+    let summe = 0;
+    for (let k = 0; k < MAX_JE_PUNKT; k++) {
+      const w = m.gewicht[i * MAX_JE_PUNKT + k];
+      if (w === 0) break;
+      const e = m.einheit[i * MAX_JE_PUNKT + k];
+      gewichte.push([e, w]); summe += w;
+      if (idVon(e) === 'bauch_g') bauch[i] += w;
+      if (idVon(e) === 'serratus') serratus[i] += w;
+    }
+    // Faserphase des stärksten Muskels
+    const id = gewichte.length ? idVon(gewichte[0][0]) : '', v = VERLAUF[id];
+    if (v?.art === 'achse') {
+      const d = sub(p, v.a), r = sub(d, v.u.map(c => c * dot(d, v.u)) as V3);
+      const f = quer(v.u), l = cross(v.u, f);
+      const winkel = Math.atan2(dot(r, l), dot(r, f));
+      // ganzzahlige Streifenzahl rundherum: der Sprung bei ±π ändert sin(2π·phase) nicht
+      phase[i] = winkel / (2 * Math.PI) * Math.round(2 * Math.PI * v.radius * FASERN_JE_METER);
+    } else if (v?.art === 'faecher' && bezug.has(id)) {
+      const b = bezug.get(id)!, d = sub(p, v.z);
+      phase[i] = Math.atan2(dot(d, b.e2), dot(d, b.e1)) * b.r * FASERN_JE_METER;
+    }
+    herr[i] = gewichte.length && gewichte[0][1] >= 1 - summe ? gewichte[0][0] : 0;
+  }
+  // Furche = Punkte, an deren Kanten der stärkste Anteil wechselt: schmale Linie statt breiter Mischzone
+  const rilleHaut = new Float32Array(n);
+  // Köpfe desselben Muskels trennt man durch die Haut nicht (obere/untere Brust)
+  const UNSICHTBAR = new Set(['brust_o|brust_u', 'brust_u|brust_o']);
+  const sichtbar = (a: number, b: number) => a !== 0 && b !== 0 && !UNSICHTBAR.has(idVon(a) + '|' + idVon(b));
+  const d = gemeinsameDreiecke(netz);
+  for (let t = 0; t < d.length; t += 3) {
+    const ecken = [d[t], d[t + 1], d[t + 2]];
+    for (let k = 0; k < 3; k++) {
+      const a = ecken[k], b = ecken[(k + 1) % 3];
+      if (herr[a] === herr[b]) continue;
+      rille[a] = rille[b] = 1;
+      if (sichtbar(herr[a], herr[b])) rilleHaut[a] = rilleHaut[b] = 1;
+    }
+  }
+  // Weich ausblenden: einige Glättungsschritte über die Nachbarn, damit die Furche nicht den Dreieckskanten folgt
+  const nachbarn: number[][] = Array.from({ length: n }, () => []);
+  for (let t = 0; t < d.length; t += 3) for (let k = 0; k < 3; k++) {
+    const a = d[t + k], b = d[t + (k + 1) % 3];
+    nachbarn[a].push(b); nachbarn[b].push(a);
+  }
+  const glaette = (f: Float32Array, schritte: number): Float32Array => {
+    let x: Float32Array = f, y: Float32Array = new Float32Array(n);
+    for (let s = 0; s < schritte; s++) {
+      for (let i = 0; i < n; i++) {
+        const nb = nachbarn[i];
+        let m = 0;
+        for (const j of nb) m += x[j];
+        y[i] = nb.length ? 0.4 * x[i] + 0.6 * m / nb.length : x[i];
+      }
+      [x, y] = [y, x];
+    }
+    return x;
+  };
+  // Faszienlinien: Muskeln, die sich berühren oder überlappen, bekommen verschiedene Klassen (gierige Graphfärbung).
+  // Die Linie liegt dort, wo die zwei stärksten Klassen gleich stark sind – eine glatte Kurve statt eines Bandes.
+  // Teile eines Muskels (Brust oben/unten, Deltaköpfe, Trapez) bilden eine Gruppe ohne Linie dazwischen; links/rechts bleiben getrennt
+  const GRUPPE: Record<string, string> = { brust_o: 'brust', brust_u: 'brust', delt_v: 'delt', delt_s: 'delt', delt_h: 'delt', trapez_o: 'trapez', trapez_m: 'trapez' };
+  const gruppenNr = new Map<string, number>();
+  const gruppe = (e: number) => {
+    if (e === 0) return 0;
+    const id = idVon(e), schluessel = (GRUPPE[id] ?? id) + (e % 2);   // ungerade Einheiten = links (Index 1 + 2i)
+    if (!gruppenNr.has(schluessel)) gruppenNr.set(schluessel, gruppenNr.size + 1);
+    return gruppenNr.get(schluessel)!;
+  };
+  const nachbarMuskel = new Map<number, Set<number>>();
+  const verbinde = (ea: number, eb: number) => {
+    const a = gruppe(ea), b = gruppe(eb);
+    if (a === b || a === 0 || b === 0) return;
+    if (!nachbarMuskel.has(a)) nachbarMuskel.set(a, new Set());
+    if (!nachbarMuskel.has(b)) nachbarMuskel.set(b, new Set());
+    nachbarMuskel.get(a)!.add(b); nachbarMuskel.get(b)!.add(a);
+  };
+  for (let t = 0; t < d.length; t += 3) for (let k = 0; k < 3; k++) verbinde(herr[d[t + k]], herr[d[t + (k + 1) % 3]]);
+  for (let i = 0; i < n; i++) for (let k = 0; k < MAX_JE_PUNKT; k++) for (let l = k + 1; l < MAX_JE_PUNKT; l++) {
+    const wk = m.gewicht[i * MAX_JE_PUNKT + k], wl = m.gewicht[i * MAX_JE_PUNKT + l];
+    if (wk > 0.08 && wl > 0.08) verbinde(m.einheit[i * MAX_JE_PUNKT + k], m.einheit[i * MAX_JE_PUNKT + l]);
+  }
+  const klasse = new Map<number, number>();
+  for (const e of [...nachbarMuskel.keys()].sort((a, b) => nachbarMuskel.get(b)!.size - nachbarMuskel.get(a)!.size)) {
+    const belegt = new Set([...nachbarMuskel.get(e)!].map(x => klasse.get(x)));
+    let k = 0;
+    while (belegt.has(k) && k < 6) k++;
+    klasse.set(e, k);
+  }
+  // Klasse des stärksten Muskels je Punkt (one-hot), dann über die Nachbarn geglättet: auch wo sich zwei Masken
+  // voll überlappen (beide 50 %), entsteht so genau eine Grenzlinie statt einer weißen Fläche
+  const KLASSEN = 8;
+  let klassen = new Float32Array(n * KLASSEN), tmp = new Float32Array(n * KLASSEN);
+  for (let i = 0; i < n; i++) klassen[i * KLASSEN + (herr[i] ? klasse.get(gruppe(herr[i])) ?? 0 : 7)] = 1;
+  for (let s = 0; s < 3; s++) {
+    for (let i = 0; i < n; i++) {
+      const nb = nachbarn[i];
+      for (let k = 0; k < KLASSEN; k++) {
+        let mw = 0;
+        for (const j of nb) mw += klassen[j * KLASSEN + k];
+        tmp[i * KLASSEN + k] = nb.length ? 0.5 * klassen[i * KLASSEN + k] + 0.5 * mw / nb.length : klassen[i * KLASSEN + k];
+      }
+    }
+    [klassen, tmp] = [tmp, klassen];
+  }
+  return { phase, rille: glaette(rille, 2), rilleHaut: glaette(rilleHaut, 3), bauch, serratus, klassen };
 }

@@ -16,5 +16,5 @@ function skala(stops: [number, string][], v: number): RGB {
 // Schon wenige Prozent sollen sichtbar blau werden: die ersten Wochen sind die, in denen man Rückmeldung braucht
 export const ENTWICKLUNG_STOPS: [number, string][] = [[0, '#34405e'], [0.04, '#2f8bff'], [0.35, '#f5b041'], [1, '#ff3b30']];
 export const entwicklungsFarbe = (v: number) => skala(ENTWICKLUNG_STOPS, v);
-export const atlasFarbe = (v: number) => mix(hex('#8a2a22'), hex('#e3573f'), Math.min(1, Math.max(0, v)));
+export const atlasFarbe = (v: number) => mix(hex('#a8392b'), hex('#f06448'), Math.min(1, Math.max(0, v)));
 export const HAUT_OHNE_MUSKEL: Record<'entwicklung' | 'atlas', RGB> = { entwicklung: hex('#56607a'), atlas: hex('#d9c6b5') };

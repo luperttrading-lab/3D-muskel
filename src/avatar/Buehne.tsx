@@ -52,9 +52,11 @@ function Boden({ akzent }: { akzent: string }) {
 function Fuehrung({ ziel, mitte, steuerung }: { ziel?: Kameraziel; mitte: THREE.Vector3; steuerung: React.RefObject<OrbitControlsImpl | null> }) {
   const fahrt = useRef<{ az0: number; az1: number; h0: number; h1: number; x0: number; x1: number; d0: number; d1: number; t: number } | null>(null);
   const { camera, invalidate } = useThree();
+  // Eine beim Aufbau schon vorhandene Fahrt (z. B. von der vorigen Seite) nicht wiederholen
+  const ersteFahrt = useRef(ziel?.schluessel);
   useEffect(() => {
     const c = steuerung.current;
-    if (!ziel || !c) return;
+    if (!ziel || !c || ziel.schluessel === ersteFahrt.current) return;
     const az0 = c.getAzimuthalAngle();
     let az1 = ziel.azimut ?? az0;
     while (az1 - az0 > Math.PI) az1 -= 2 * Math.PI;
@@ -89,9 +91,22 @@ interface BuehneProps {
   className?: string;
   ladeAnzeige?: ReactNode;
   onDaneben?: () => void;
+  bildVersatz?: number;    // Figur um so viele CSS-Pixel nach rechts schieben (Platz für Bedienelemente links)
 }
 
-export function Buehne({ children, groesse, akzent, ziel, startAzimut = 0.35, abstand, onFehler, bewegung = true, className, ladeAnzeige, onDaneben }: BuehneProps) {
+// Verschiebt die Bildmitte, ohne die Drehachse zu ändern: von vorn und hinten bleibt die Figur gleich versetzt
+function BildVersatz({ px }: { px: number }) {
+  const { camera, size, invalidate } = useThree();
+  useEffect(() => {
+    const c = camera as THREE.PerspectiveCamera;
+    if (px) c.setViewOffset(size.width, size.height, -px, 0, size.width, size.height); else c.clearViewOffset();
+    c.updateProjectionMatrix();
+    invalidate();
+  }, [camera, size.width, size.height, px, invalidate]);
+  return null;
+}
+
+export function Buehne({ children, groesse, akzent, ziel, startAzimut = 0.35, abstand, onFehler, bewegung = true, className, ladeAnzeige, onDaneben, bildVersatz = 0 }: BuehneProps) {
   const steuerung = useRef<OrbitControlsImpl>(null);
   const mitte = useMemo(() => new THREE.Vector3(0, groesse * 0.53, -0.11), [groesse]);
   const d = abstand ?? groesse * 2.25;
@@ -122,6 +137,7 @@ export function Buehne({ children, groesse, akzent, ziel, startAzimut = 0.35, ab
       <OrbitControls ref={steuerung} target={mitte} enablePan={false} minDistance={0.7} maxDistance={6.5}
         minPolarAngle={0.35} maxPolarAngle={1.75} enableDamping={bewegung} dampingFactor={0.12} rotateSpeed={0.7} zoomSpeed={0.8} />
       <Fuehrung ziel={ziel} mitte={mitte} steuerung={steuerung} />
+      <BildVersatz px={bildVersatz} />
     </Canvas>
   );
 }
