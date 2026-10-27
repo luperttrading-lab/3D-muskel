@@ -48,7 +48,7 @@ in den Vordergrund, ob eine neue Fassung da ist; ein Tipp auf die gepunktete Ver
 | Verformung | je Muskel und Seite eigene Maske; Mischung aus 3 × 3 Muskel-/Fett-Formen; Pump als kurzzeitiger Zuschlag |
 | Training | Pläne (Ganzkörper, Push, Pull, Legs, …), 43 Übungen mit Muskelkoeffizienten, Seite (beide/links/rechts), Gewicht, Wiederholungen, RIR, Schmerz-Markierung |
 | Muskelatlas | Tabs Vorne/Hinten/Seite, Gruppenleiste (Brust bis Waden), Darstellungen *Haut*, *Entwicklung* (Farbskala), *Anatomie* (gebackenes Texturpaket: Muskelformen, Faserverlauf, Faszienlinien, Sehnenplatten, Relief); Muskel antippen → Funktion primär/sekundär, Entwicklungsstand links/rechts, beteiligte Übungen |
-| Evolution | Vorher/Nachher-Vergleich, Rang (Lauch → Adonis → Beast), Archetypen mit Hysterese, Verläufe je Muskel |
+| Evolution | Vorher/Nachher-Vergleich, Rang (Lauch → Adonis → Beast), Archetypen mit Hysterese, Verläufe je Muskel; **Vorschau**: Plan (Ganzkörper, Push/Pull/Legs, Ober-/Unterkörper) 2–5× pro Woche über 12–52 Wochen durch die Engine spielen und den Körper Woche für Woche mitwachsen lassen – ab dem echten Stand, ohne zu speichern. Körperfett ist dabei eine eingestellte Annahme (bleibt / weniger / definiert), kein Modell |
 | Coach ATLAS | regelbasiert, vier Stile (Kumpel, Drill, Wissenschaftler, Game-Master); stellt keine Diagnosen |
 | Daten | IndexedDB (Dexie), Rückfall auf localStorage; Export/Import als JSON; alles bleibt auf dem Gerät |
 | Sonstiges | reduzierte Bewegung, 2D-Ersatz ohne WebGL, Diagnose-Ansicht, Zeitreise-Testmodus für Abbau und Gedächtnis |
