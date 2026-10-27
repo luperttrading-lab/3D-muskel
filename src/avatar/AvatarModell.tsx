@@ -253,7 +253,7 @@ export function AvatarModell({ daten, zustand, darstellung, auswahl, hautton, ak
     const zone = (i: number) => {
       const x = Math.abs(P[3 * i]), y = P[3 * i + 1], z = P[3 * i + 2];
       const t = ((x - ell[0]) * ua[0] + (y - ell[1]) * ua[1] + (z - ell[2]) * ua[2]) / (ual * ual);
-      const kopf = Math.min(1, Math.max(0, (y - hals[1] - 0.01) / 0.03));
+      const kopf = Math.min(1, Math.max(0, (y - hals[1] + 0.05) / 0.03));   // Hals mit Haut, wo kein Muskel liegt
       const haende = Math.min(1, Math.max(0, (t - 0.9) / 0.08));
       const fuesse = Math.min(1, Math.max(0, (kn[1] + 0.04 - y) / 0.03));
       return Math.max(kopf, haende, fuesse);

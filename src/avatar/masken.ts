@@ -103,10 +103,10 @@ export function berechneMasken(netz: FormNetz, gelenke: Record<string, V3>): Mas
     const us = inGlied(unterschenkel, p, nv);
     const beinOben = fenster(os.t, 0.08, 0.97, 0.06) * unter(os.radius, 0.13, 0.02);
     const beinUnten = fenster(us.t, 0.04, 0.86, 0.05) * unter(us.radius, 0.09, 0.015);
-    add('rect_fem', beinOben * ueber(os.nf, 0.72, 0.12) * fenster(os.t, 0.1, 0.85, 0.08));
+    add('rect_fem', beinOben * ueber(os.nf, 0.62, 0.12) * fenster(os.t, 0.1, 0.85, 0.08));
     add('vast_lat', beinOben * ueber(os.nl, 0.15, 0.2) * ueber(os.nf, -0.35, 0.2) * fenster(os.t, 0.12, 0.92, 0.08));
     add('vast_med', beinOben * unter(os.nl, -0.05, 0.2) * ueber(os.nf, 0.05, 0.2) * fenster(os.t, 0.52, 0.98, 0.07));
-    add('adduktoren', beinOben * unter(os.nl, -0.3, 0.2) * fenster(os.nf, -0.6, 0.45, 0.2) * fenster(os.t, 0.0, 0.62, 0.08));
+    add('adduktoren', beinOben * unter(os.nl, -0.18, 0.2) * fenster(os.nf, -0.6, 0.6, 0.2) * fenster(os.t, 0.0, 0.66, 0.08));
     add('hamstrings', beinOben * unter(os.nf, -0.3, 0.2) * fenster(os.t, 0.18, 0.95, 0.07));
     add('gastro', beinUnten * unter(us.nf, -0.15, 0.2) * fenster(us.t, 0.06, 0.55, 0.07));
     add('soleus', beinUnten * unter(us.nf, 0.1, 0.3) * fenster(us.t, 0.42, 0.86, 0.07) * (us.nf < -0.5 ? 0.6 : 1));
@@ -117,15 +117,15 @@ export function berechneMasken(netz: FormNetz, gelenke: Record<string, V3>): Mas
     const rumpf = 1 - Math.min(1, glied_);
     const u = p[0] / W, v = (p[1] - yB) / hoeheRumpf;
     const [nx, ny, nz] = nv;
-    add('brust_o', rumpf * ueber(nz, 0.25, 0.2) * fenster(u, 0.04, 0.88, 0.06) * fenster(v, 0.72, 0.86, 0.04));
+    add('brust_o', rumpf * ueber(nz, 0.25, 0.2) * fenster(u, 0.04, 0.95, 0.06) * fenster(v, 0.72, 0.9, 0.04));
     add('brust_u', rumpf * ueber(nz, 0.2, 0.2) * fenster(u, 0.04, 0.9, 0.06) * fenster(v, 0.5, 0.73, 0.05));
     add('serratus', rumpf * ueber(nx, 0.35, 0.2) * ueber(nz, -0.15, 0.2) * fenster(v, 0.42, 0.62, 0.05) * ueber(u, 0.55, 0.08));
     add('bauch_g', rumpf * ueber(nz, 0.4, 0.2) * fenster(u, -0.1, 0.3, 0.06) * fenster(v, -0.1, 0.5, 0.05));
-    add('bauch_s', rumpf * ueber(nz, -0.3, 0.25) * fenster(u, 0.32, 1.1, 0.07) * fenster(v, -0.02, 0.47, 0.05));
-    add('lat', rumpf * unter(nz, 0.15, 0.2) * fenster(u, 0.25, 1.1, 0.08) * fenster(v, 0.3, 0.78, 0.05));
+    add('bauch_s', rumpf * ueber(nz, -0.3 - 0.45 * unter(v, 0.3, 0.06), 0.25) * fenster(u, 0.32, 1.1, 0.07) * fenster(v, -0.02, 0.47, 0.05));
+    add('lat', rumpf * unter(nz, 0.15, 0.2) * fenster(u, 0.25, 1.1, 0.08) * fenster(v, 0.08, 0.78, 0.05));
     add('trapez_m', rumpf * unter(nz, -0.3, 0.2) * fenster(u, -0.1, 0.55, 0.07) * fenster(v, 0.58, 0.9, 0.05));
-    add('trapez_o', rumpf * (ueber(ny, 0.25, 0.2) + unter(nz, -0.2, 0.2)) * 0.6 * fenster(u, 0.06, 0.85, 0.07) * fenster(v, 0.86, 1.07, 0.04));
-    add('strecker', rumpf * unter(nz, -0.4, 0.2) * fenster(u, -0.1, 0.28, 0.06) * fenster(v, -0.05, 0.62, 0.05));
+    add('trapez_o', rumpf * (ueber(ny, 0.25, 0.2) + unter(nz, -0.2, 0.2)) * 0.6 * fenster(u, 0.06, 0.98, 0.07) * fenster(v, 0.83, 1.07, 0.04));
+    add('strecker', rumpf * unter(nz, -0.4, 0.2) * fenster(u, -0.1, 0.32, 0.06) * fenster(v, -0.05, 0.62, 0.05));
     // Gesäß: unterhalb des Beckens, rückwärts gerichtet
     const ug = p[0] / (huefte[0] + 0.09), vg = (p[1] - (huefte[1] - 0.15)) / 0.27;
     const gesaess = (1 - Math.min(1, beinUnten + armOben + armUnten)) * (1 - 0.7 * beinOben * ueber(os.t, 0.32, 0.06));
@@ -317,15 +317,21 @@ export function berechneAnatomie(netz: FormNetz, gelenke: Record<string, V3>, m:
     while (belegt.has(k) && k < 6) k++;
     klasse.set(e, k);
   }
-  const KLASSEN = 8, klassen = new Float32Array(n * KLASSEN);
-  for (let i = 0; i < n; i++) {
-    let summe = 0;
-    for (let k = 0; k < MAX_JE_PUNKT; k++) {
-      const w = m.gewicht[i * MAX_JE_PUNKT + k];
-      if (w === 0) break;
-      klassen[i * KLASSEN + (klasse.get(gruppe(m.einheit[i * MAX_JE_PUNKT + k])) ?? 0)] += w; summe += w;
+  // Klasse des stärksten Muskels je Punkt (one-hot), dann über die Nachbarn geglättet: auch wo sich zwei Masken
+  // voll überlappen (beide 50 %), entsteht so genau eine Grenzlinie statt einer weißen Fläche
+  const KLASSEN = 8;
+  let klassen = new Float32Array(n * KLASSEN), tmp = new Float32Array(n * KLASSEN);
+  for (let i = 0; i < n; i++) klassen[i * KLASSEN + (herr[i] ? klasse.get(gruppe(herr[i])) ?? 0 : 7)] = 1;
+  for (let s = 0; s < 2; s++) {
+    for (let i = 0; i < n; i++) {
+      const nb = nachbarn[i];
+      for (let k = 0; k < KLASSEN; k++) {
+        let mw = 0;
+        for (const j of nb) mw += klassen[j * KLASSEN + k];
+        tmp[i * KLASSEN + k] = nb.length ? 0.5 * klassen[i * KLASSEN + k] + 0.5 * mw / nb.length : klassen[i * KLASSEN + k];
+      }
     }
-    klassen[i * KLASSEN + 7] += Math.max(0, 1 - summe);
+    [klassen, tmp] = [tmp, klassen];
   }
   return { phase, rille: glaette(rille, 2), rilleHaut: glaette(rilleHaut, 3), bauch, klassen };
 }
