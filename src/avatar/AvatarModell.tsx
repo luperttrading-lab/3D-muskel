@@ -51,13 +51,14 @@ float linie(float y, float m, float b) { return 1.0 - smoothstep(0.0, b, abs(y -
 const KLEID_GLSL = /* glsl */`
 uniform float uFrau, uFarbAnteil, uHoseOben, uHoseUnten, uBhOben, uBhUnten, uRumpfX, uTraegerX;
 uniform float uAnatomie;
-uniform vec3 uKleid, uAkzent, uRestFarbe, uBauchY;
+uniform vec3 uKleid, uAkzent, uAkzentAnatomie, uRestFarbe, uBauchY;
 varying vec3 vLokal;
 varying vec3 vFarbe;
 varying float vGluehen;
 varying float vAuswahl;
 varying float vArm;
 varying float vPhase, vRille, vRilleHaut, vDef, vBauch, vDecke, vHautZone;
+varying vec4 vKlasseA, vKlasseB;
 float fenster(float x, float a, float b, float w) { return smoothstep(a - w, a + w, x) * (1.0 - smoothstep(b - w, b + w, x)); }
 `;
 
@@ -79,6 +80,7 @@ function kleidMaterial(map: THREE.Texture, akzent: THREE.Color, gelenke: Koerper
     uKleid: { value: new THREE.Color('#1b1f2a') },
     uAkzent: { value: akzent },
     uAnatomie: { value: 0 },
+    uAkzentAnatomie: { value: akzent.clone().lerp(new THREE.Color('#ffffff'), 0.1) },
     uRestFarbe: { value: new THREE.Color(0.8, 0.75, 0.7) },
     // Sehnenzüge des Sixpacks: Nabelhöhe und zwei darüber (Anteile der Rumpfhöhe Becken → Hals)
     uBauchY: { value: new THREE.Vector3(...[0.2, 0.32, 0.43].map(v => becken[1] + (hals[1] - becken[1]) * v)) },
@@ -86,10 +88,10 @@ function kleidMaterial(map: THREE.Texture, akzent: THREE.Color, gelenke: Koerper
   mat.onBeforeCompile = (s) => {
     Object.assign(s.uniforms, uniforms);
     s.vertexShader = s.vertexShader
-      .replace('#include <common>', `#include <common>\n${KLEID_GLSL}\nattribute vec3 aFarbe;\nattribute float aGluehen, aAuswahl, aArm, aPhase, aRille, aRilleHaut, aDef, aBauch, aDecke, aHautZone;`)
+      .replace('#include <common>', `#include <common>\n${KLEID_GLSL}\nattribute vec3 aFarbe;\nattribute float aGluehen, aAuswahl, aArm, aPhase, aRille, aRilleHaut, aDef, aBauch, aDecke, aHautZone;\nattribute vec4 aKlasseA, aKlasseB;`)
       .replace('#include <begin_vertex>', `#include <begin_vertex>
         vLokal = position; vFarbe = aFarbe; vGluehen = aGluehen; vAuswahl = aAuswahl; vArm = aArm;
-        vPhase = aPhase; vHautZone = aHautZone; vRille = aRille; vRilleHaut = aRilleHaut; vDef = aDef; vBauch = aBauch; vDecke = aDecke;`);
+        vPhase = aPhase; vHautZone = aHautZone; vRille = aRille; vRilleHaut = aRilleHaut; vDef = aDef; vBauch = aBauch; vDecke = aDecke; vKlasseA = aKlasseA; vKlasseB = aKlasseB;`);
     s.fragmentShader = s.fragmentShader
       .replace('#include <common>', `#include <common>\n${KLEID_GLSL}${RELIEF_GLSL}`)
       .replace('#include <map_fragment>', `#include <map_fragment>
@@ -114,11 +116,23 @@ function kleidMaterial(map: THREE.Texture, akzent: THREE.Color, gelenke: Koerper
         float rilleHaut = smoothstep(0.05, 0.6, vRilleHaut) * (1.0 - kleid);
         float sixpackHaut = vBauch * max(max(max(linie(vLokal.y, uBauchY.x, 0.012), linie(vLokal.y, uBauchY.y, 0.012)), linie(vLokal.y, uBauchY.z, 0.011)), linie(vLokal.x, 0.0, 0.01));
         float hautTiefe = vDef * (0.0007 * rilleHaut + 0.0008 * sixpackHaut);
-        float hoehe = uAnatomie * (0.0005 * faser - 0.004 * rille - 0.003 * sixpack) - (1.0 - uAnatomie) * hautTiefe;
+        // Faszie: wo die zwei stärksten Farbklassen gleich stark sind; Breite ≈ 2 mm, mindestens ~1 Pixel
+        float m1 = 0.0, m2 = 0.0;
+        for (int k = 0; k < 8; k++) {
+          float v = k < 4 ? vKlasseA[k] : vKlasseB[k - 4];
+          if (v > m1) { m2 = m1; m1 = v; } else if (v > m2) m2 = v;
+        }
+        float abstandGrenze = m1 - m2;
+        float faszie = 1.0 - smoothstep(0.04, 0.04 + 1.2 * fwidth(abstandGrenze), abstandGrenze);
+        float sixpackKern = vBauch * max(max(max(linie(vLokal.y, uBauchY.x, 0.0045), linie(vLokal.y, uBauchY.y, 0.0045)), linie(vLokal.y, uBauchY.z, 0.004)), linie(vLokal.x, 0.0, 0.004));
+        float hoehe = uAnatomie * (0.0005 * faser - 0.0045 * rille - 0.0035 * sixpack) - (1.0 - uAnatomie) * hautTiefe;
         diffuseColor.rgb *= 1.0 - (1.0 - uAnatomie) * vDef * (0.2 * rilleHaut + 0.16 * sixpackHaut) * (1.0 - kleid);   // weiche Schatten in den Muskelgrenzen
-        diffuseColor.rgb *= 1.0 - uAnatomie * (0.45 * rille * decke + 0.3 * sixpack);
+        diffuseColor.rgb *= 1.0 - uAnatomie * (0.4 * max(rille - faszie, 0.0) * decke + 0.3 * max(sixpack - sixpackKern, 0.0));   // Schattenkante am Muskelbauch
         diffuseColor.rgb *= 1.0 + uAnatomie * 0.10 * faser;
-        diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.80, 0.68, 0.62), uAnatomie * (1.0 - decke) * 0.45);   // Sehnen und Faszien
+        diffuseColor.rgb = mix(diffuseColor.rgb, uAkzentAnatomie, uAnatomie * vAuswahl * 0.75);   // gewählter Muskel flächig
+        vec3 faszienFarbe = vec3(0.78, 0.80, 0.86);
+        diffuseColor.rgb = mix(diffuseColor.rgb, faszienFarbe, uAnatomie * max(0.8 * faszie, 0.75 * sixpackKern));   // Faszien zwischen den Muskeln
+        diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.70, 0.62, 0.64), uAnatomie * (1.0 - decke) * 0.6);   // Sehnenplatten gedämpft, damit Maskenlücken nicht grell wirken
         // Kopf, Hände und Füße bleiben in der Anatomie-Ansicht Haut
         diffuseColor.rgb = mix(diffuseColor.rgb, hautFarbe, uAnatomie * vHautZone * (1.0 - decke));`)
       .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
@@ -179,6 +193,8 @@ export function AvatarModell({ daten, zustand, darstellung, auswahl, hautton, ak
     hautZone: new THREE.BufferAttribute(new Float32Array(nUV), 1),
     rilleHaut: new THREE.BufferAttribute(new Float32Array(nUV), 1),
     def: new THREE.BufferAttribute(new Float32Array(nUV), 1),
+    klasseA: new THREE.BufferAttribute(new Float32Array(nUV * 4), 4),
+    klasseB: new THREE.BufferAttribute(new Float32Array(nUV * 4), 4),
   }), [nUV]);
   const geo = useMemo(() => {
     const g = new THREE.BufferGeometry();
@@ -196,6 +212,8 @@ export function AvatarModell({ daten, zustand, darstellung, auswahl, hautton, ak
     g.setAttribute('aHautZone', attr.hautZone);
     g.setAttribute('aRilleHaut', attr.rilleHaut);
     g.setAttribute('aDef', attr.def);
+    g.setAttribute('aKlasseA', attr.klasseA);
+    g.setAttribute('aKlasseB', attr.klasseB);
     g.setIndex(new THREE.BufferAttribute(daten.koerper.dreiecke, 1));
     return g;
   }, [verformer, daten, attr]);
@@ -245,12 +263,13 @@ export function AvatarModell({ daten, zustand, darstellung, auswahl, hautton, ak
       attr.phase.array[j] = an.phase[i];
       attr.hautZone.array[j] = zone(i);
       attr.rilleHaut.array[j] = an.rilleHaut[i];
+      for (let k = 0; k < 4; k++) { attr.klasseA.array[4 * j + k] = an.klassen[8 * i + k]; attr.klasseB.array[4 * j + k] = an.klassen[8 * i + 4 + k]; }
       attr.rille.array[j] = an.rille[i]; attr.bauch.array[j] = an.bauch[i];
       let summe = 0;
       for (let k = 0; k < MAX_JE_PUNKT; k++) summe += masken.gewicht[i * MAX_JE_PUNKT + k];
       attr.decke.array[j] = Math.min(1, summe);
     }
-    attr.phase.needsUpdate = attr.rille.needsUpdate = attr.bauch.needsUpdate = attr.decke.needsUpdate = attr.hautZone.needsUpdate = attr.rilleHaut.needsUpdate = true;
+    attr.phase.needsUpdate = attr.rille.needsUpdate = attr.bauch.needsUpdate = attr.decke.needsUpdate = attr.hautZone.needsUpdate = attr.rilleHaut.needsUpdate = attr.klasseA.needsUpdate = attr.klasseB.needsUpdate = true;
   }, [masken, daten, attr, onMasken]);
 
   // Anzeige-Zustand gleitet auf die Zielwerte zu
@@ -277,8 +296,8 @@ export function AvatarModell({ daten, zustand, darstellung, auswahl, hautton, ak
       for (let k = 0; k < MAX_JE_PUNKT; k++) {
         const w = mg[o + k];
         if (w === 0) break;
-        const e = me[o + k];
-        r += w * farbe[3 * e]; g += w * farbe[3 * e + 1]; b += w * farbe[3 * e + 2];
+        const e = me[o + k], ton = darstellung === 'atlas' ? 1 + 0.09 * Math.sin(e * 2.399) : 1;
+        r += w * ton * farbe[3 * e]; g += w * ton * farbe[3 * e + 1]; b += w * ton * farbe[3 * e + 2];
         glu += w * gl[e];
         if (e === auswahl) aus += w;
         summe += w;
@@ -321,7 +340,7 @@ export function AvatarModell({ daten, zustand, darstellung, auswahl, hautton, ak
     const az = darstellung === 'atlas' ? 1 : 0, ad = az - anatAnteil.current;
     if (Math.abs(ad) > 0.002) { anatAnteil.current += ad * (bewegung ? Math.min(1, dt * 8) : 1); aktiv = true; } else anatAnteil.current = az;
     uniforms.uAnatomie.value = anatAnteil.current;
-    mat.roughness = 0.58 - 0.2 * anatAnteil.current;   // Muskelgewebe glänzt feucht
+    mat.roughness = 0.58 - 0.26 * anatAnteil.current;   // Muskelgewebe glänzt feucht
     mat.sheen = 0.02 + 0.33 * (1 - farbAnteil.current);   // Haut-Glanz würde die Farbskalen auswaschen
     if (aktiv || glueht || dirty.current) {
       aktualisiere(a.mu, a.muRest, a.omega);

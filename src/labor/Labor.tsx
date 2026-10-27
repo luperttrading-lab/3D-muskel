@@ -8,6 +8,7 @@ import { atlasFarbe, HAUT_OHNE_MUSKEL } from '../ui/farben';
 
 const q = new URLSearchParams(location.hash.split('?')[1] ?? '');
 const zahl = (k: string, d: number) => (q.has(k) ? Number(q.get(k)) : d);
+const auswahlAusUrl = () => { const [id, seite] = (q.get('auswahl') ?? '').split(':'); return EINHEITEN.find(e => e.id === id && e.seite === (seite ?? 'L'))?.index ?? 0; };
 
 function farbeFuer(i: number): [number, number, number] {
   const h = (i * 0.61803) % 1, s = 0.75, l = i % 2 ? 0.55 : 0.42;
@@ -35,7 +36,7 @@ function Ansicht({ g, azimut }: { g: Geschlecht; azimut: number }) {
   return (
     <Buehne groesse={daten.groesse} akzent={g === 'm' ? '#2f8bff' : '#ff3fa4'} startAzimut={azimut} abstand={q.has('abstand') ? zahl('abstand', 4) : undefined}
       ziel={q.has('hoehe') ? { hoehe: zahl('hoehe', 1), abstand: zahl('abstand', 4), azimut, schluessel: 1 } : undefined} className="w-full h-full">
-      <AvatarModell daten={daten} zustand={zustand} darstellung={(q.get('modus') as Darstellung) ?? 'atlas'} auswahl={0} hautton="hell" akzent={g === 'm' ? '#2f8bff' : '#ff3fa4'} gluehStart={-1e9} bewegung={false} />
+      <AvatarModell daten={daten} zustand={zustand} darstellung={(q.get('modus') as Darstellung) ?? 'atlas'} auswahl={auswahlAusUrl()} hautton="hell" akzent={g === 'm' ? '#2f8bff' : '#ff3fa4'} gluehStart={-1e9} bewegung={false} />
     </Buehne>
   );
 }

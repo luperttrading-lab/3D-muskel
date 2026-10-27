@@ -167,6 +167,7 @@ export interface Anatomie {
   phase: Float32Array;    // Koordinate quer zur Faser in »Streifen«: sin(2π·phase) zeichnet die Fasern
   rille: Float32Array;    // 0 = mitten im Muskel, 1 = Grenze zwischen zwei Muskeln oder Muskel und Sehne
   rilleHaut: Float32Array; // nur Grenzen, die man bei wenig Fett durch die Haut sieht (Muskel an Muskel)
+  klassen: Float32Array;  // punkte × 8: Gewicht je Farbklasse (Nachbarmuskeln haben verschiedene Klassen, 7 = Sehne/Haut)
   bauch: Float32Array;    // Gewicht des geraden Bauchmuskels
 }
 
@@ -285,5 +286,46 @@ export function berechneAnatomie(netz: FormNetz, gelenke: Record<string, V3>, m:
     }
     return x;
   };
-  return { phase, rille: glaette(rille, 2), rilleHaut: glaette(rilleHaut, 3), bauch };
+  // Faszienlinien: Muskeln, die sich berühren oder überlappen, bekommen verschiedene Klassen (gierige Graphfärbung).
+  // Die Linie liegt dort, wo die zwei stärksten Klassen gleich stark sind – eine glatte Kurve statt eines Bandes.
+  // Teile eines Muskels (Brust oben/unten, Deltaköpfe, Trapez) bilden eine Gruppe ohne Linie dazwischen; links/rechts bleiben getrennt
+  const GRUPPE: Record<string, string> = { brust_o: 'brust', brust_u: 'brust', delt_v: 'delt', delt_s: 'delt', delt_h: 'delt', trapez_o: 'trapez', trapez_m: 'trapez' };
+  const gruppenNr = new Map<string, number>();
+  const gruppe = (e: number) => {
+    if (e === 0) return 0;
+    const id = idVon(e), schluessel = (GRUPPE[id] ?? id) + (e % 2);   // ungerade Einheiten = links (Index 1 + 2i)
+    if (!gruppenNr.has(schluessel)) gruppenNr.set(schluessel, gruppenNr.size + 1);
+    return gruppenNr.get(schluessel)!;
+  };
+  const nachbarMuskel = new Map<number, Set<number>>();
+  const verbinde = (ea: number, eb: number) => {
+    const a = gruppe(ea), b = gruppe(eb);
+    if (a === b || a === 0 || b === 0) return;
+    if (!nachbarMuskel.has(a)) nachbarMuskel.set(a, new Set());
+    if (!nachbarMuskel.has(b)) nachbarMuskel.set(b, new Set());
+    nachbarMuskel.get(a)!.add(b); nachbarMuskel.get(b)!.add(a);
+  };
+  for (let t = 0; t < d.length; t += 3) for (let k = 0; k < 3; k++) verbinde(herr[d[t + k]], herr[d[t + (k + 1) % 3]]);
+  for (let i = 0; i < n; i++) for (let k = 0; k < MAX_JE_PUNKT; k++) for (let l = k + 1; l < MAX_JE_PUNKT; l++) {
+    const wk = m.gewicht[i * MAX_JE_PUNKT + k], wl = m.gewicht[i * MAX_JE_PUNKT + l];
+    if (wk > 0.08 && wl > 0.08) verbinde(m.einheit[i * MAX_JE_PUNKT + k], m.einheit[i * MAX_JE_PUNKT + l]);
+  }
+  const klasse = new Map<number, number>();
+  for (const e of [...nachbarMuskel.keys()].sort((a, b) => nachbarMuskel.get(b)!.size - nachbarMuskel.get(a)!.size)) {
+    const belegt = new Set([...nachbarMuskel.get(e)!].map(x => klasse.get(x)));
+    let k = 0;
+    while (belegt.has(k) && k < 6) k++;
+    klasse.set(e, k);
+  }
+  const KLASSEN = 8, klassen = new Float32Array(n * KLASSEN);
+  for (let i = 0; i < n; i++) {
+    let summe = 0;
+    for (let k = 0; k < MAX_JE_PUNKT; k++) {
+      const w = m.gewicht[i * MAX_JE_PUNKT + k];
+      if (w === 0) break;
+      klassen[i * KLASSEN + (klasse.get(gruppe(m.einheit[i * MAX_JE_PUNKT + k])) ?? 0)] += w; summe += w;
+    }
+    klassen[i * KLASSEN + 7] += Math.max(0, 1 - summe);
+  }
+  return { phase, rille: glaette(rille, 2), rilleHaut: glaette(rilleHaut, 3), bauch, klassen };
 }
