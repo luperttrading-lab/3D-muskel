@@ -1,6 +1,6 @@
 // Prüft die Körper-Vorschau: wächst mit dem Training, sättigt, speichert nichts, Fett nur als Überblendung.
 import { describe, expect, test } from 'vitest';
-import { simFett, simSaetze, simuliere } from '../src/engine/simulation';
+import { simFett, simFettZiel, simSaetze, simuliere } from '../src/engine/simulation';
 import { einheitIndex } from '../src/engine/muskeln';
 import type { Optionen, PerformedSet } from '../src/engine/modell';
 
@@ -40,6 +40,13 @@ describe('Körper-Vorschau', () => {
     expect(w[0].ansicht.entwicklung[einheitIndex('bizeps', 'L')]).toBeGreaterThan(w[0].ansicht.entwicklung[einheitIndex('bizeps', 'R')]);
     expect(w[8].ansicht.entwicklung[einheitIndex('vast_lat', 'L')]).toBeGreaterThan(0);
     expect(w[8].ansicht.pump[einheitIndex('bizeps', 'L')]).toBe(0);
+  });
+
+  test('Fettziele gehen nie unter die athletische Form (sonst schrumpft der Körperbau)', () => {
+    expect(simFettZiel(0.76, 'gleich')).toBeCloseTo(0.76);
+    expect(simFettZiel(0.76, 'weniger')).toBeCloseTo(0.63);
+    expect(simFettZiel(0.76, 'definiert')).toBeCloseTo(0.5);
+    expect(simFettZiel(0.45, 'definiert')).toBeCloseTo(0.45);   // schon schlank: nicht weiter abmagern
   });
 
   test('Fett blendet linear zum Ziel und bleibt dort', () => {

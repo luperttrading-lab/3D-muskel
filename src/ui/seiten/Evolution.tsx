@@ -4,7 +4,7 @@ import { BuehnenPlatz, useReduzierteBewegung } from '../BuehnenSystem';
 import { ARCHETYPEN, ARCHETYP, RANG_GRENZEN, regionWerte } from '../../engine/archetypen';
 import { MUSKELN, MUSKEL, einheitIndex, amax } from '../../engine/muskeln';
 import { verlauf, REGELN } from '../../engine/modell';
-import { SIM_PROGRAMME, simFett, simuliere } from '../../engine/simulation';
+import { SIM_PROGRAMME, simFett, simFettZiel, simuliere, type FettZiel } from '../../engine/simulation';
 import { KOERPERFORMEN } from '../../store/profil';
 import { Diagramm } from '../teile/Diagramm';
 import { rangName } from '../App';
@@ -13,7 +13,6 @@ const TAG = 86_400_000;
 const datum = (t: number) => new Date(t).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' });
 const REGIONEN: [string, string][] = [['brust', 'Brust'], ['schulter', 'Schultern'], ['oberarm', 'Oberarme'], ['unterarm', 'Unterarme'], ['ruecken', 'Rücken'], ['bauch', 'Bauch'], ['gesaess', 'Gesäß'], ['oberschenkel', 'Oberschenkel'], ['waden', 'Waden']];
 
-type FettZiel = 'gleich' | 'weniger' | 'definiert';
 const FETT_ZIELE: [FettZiel, string][] = [['gleich', 'bleibt'], ['weniger', 'weniger'], ['definiert', 'definiert']];
 
 // Vorschau: Trainingsplan über Wochen durch die Engine spielen und den Körper mitwachsen lassen (nichts wird gespeichert)
@@ -31,7 +30,7 @@ function useVorschau() {
   const schritte = useMemo(() => simuliere(saetze, optionen(profil), jetzt, { programm, tageProWoche: tage, wochen }, profil.geschlecht),
     [saetze, profil, jetzt, programm, tage, wochen]);
   const omega0 = KOERPERFORMEN[profil.koerperform].omega[profil.geschlecht];
-  const omegaZiel = fett === 'gleich' ? omega0 : fett === 'weniger' ? Math.max(0.3, omega0 - 0.22) : 0.3;
+  const omegaZiel = simFettZiel(omega0, fett);
   const w = Math.min(woche, wochen), schritt = schritte[w];
   const omega = simFett(omega0, omegaZiel, w, wochen);
 
