@@ -6,14 +6,14 @@ import { AvatarModell, type AvatarZustand } from '../avatar/AvatarModell';
 import { Buehne } from '../avatar/Buehne';
 import { ladeKoerper, type KoerperDaten } from '../avatar/daten';
 import type { Masken } from '../avatar/masken';
-import { ANZAHL_EINHEITEN, EINHEITEN, amax } from '../engine/muskeln';
+import { ANZAHL_EINHEITEN, ATLAS_GRUPPEN, EINHEITEN, amax, einheitIndex } from '../engine/muskeln';
 import { muskulatur, REGELN } from '../engine/modell';
 import { useApp } from '../store/app';
 import { AKZENTE, KOERPERFORMEN, MU_START } from '../store/profil';
 import { assetStatus, protokoll, useDiagnose } from '../store/diagnose';
 import { atlasFarbe, entwicklungsFarbe, HAUT_OHNE_MUSKEL } from './farben';
 
-interface PlatzOptionen { vergleich?: boolean; startAzimut?: number; abstandFaktor?: number }
+interface PlatzOptionen { vergleich?: boolean; startAzimut?: number; abstandFaktor?: number; versatzX?: number }
 const Kontext = createContext<{ container: HTMLDivElement; setOptionen: (o: PlatzOptionen) => void } | null>(null);
 
 export function useReduzierteBewegung() {
@@ -75,7 +75,14 @@ function Szene({ vergleich }: { vergleich: boolean }) {
   const feedback = useApp(s => s.feedback);
   const darstellung = useApp(s => s.darstellung);
   const auswahl = useApp(s => s.auswahl);
+  const auswahlGruppe = useApp(s => s.auswahlGruppe);
   const waehle = useApp(s => s.waehle);
+  // Hervorgehoben: der gewählte Muskel, sonst die ganze gewählte Gruppe
+  const hervor = useMemo(() => {
+    if (auswahl) return [auswahl];
+    const g = ATLAS_GRUPPEN.find(x => x.id === auswahlGruppe);
+    return g ? g.muskeln.flatMap(m => [einheitIndex(m, 'L'), einheitIndex(m, 'R')]) : [];
+  }, [auswahl, auswahlGruppe]);
   const setzeMuskelMitten = useApp(s => s.setzeMuskelMitten);
   const ohneBewegung = useReduzierteBewegung();
   const omega = KOERPERFORMEN[profil.koerperform].omega[profil.geschlecht];
@@ -102,7 +109,7 @@ function Szene({ vergleich }: { vergleich: boolean }) {
         <AvatarModell daten={daten} zustand={start} darstellung={darstellung} auswahl={0} hautton={profil.hautton} akzent={akzent}
           gluehStart={-1e9} bewegung={!ohneBewegung} position={[-versatz, 0, 0]} />
       )}
-      <AvatarModell daten={daten} zustand={zustand} darstellung={darstellung} auswahl={auswahl} hautton={profil.hautton} akzent={akzent}
+      <AvatarModell daten={daten} zustand={zustand} darstellung={darstellung} auswahl={hervor} hautton={profil.hautton} akzent={akzent}
         gluehStart={feedback?.zeit ?? -1e9} bewegung={!ohneBewegung} position={vergleich ? [versatz, 0, 0] : undefined}
         onWahl={e => waehle(e)} onMasken={beiMasken} onMorphMs={morphMs} />
     </>
@@ -121,7 +128,7 @@ function BuehnenInhalt({ opt }: { opt: PlatzOptionen }) {
   return (
     <Buehne key={`${profil.geschlecht}-${vergleich}`} groesse={groesse} akzent={AKZENTE[profil.akzent].farbe} ziel={kamera} bewegung={!ohneBewegung}
       startAzimut={vergleich ? 0 : opt.startAzimut ?? 0.3} abstand={groesse * (vergleich ? 3.0 : 2.3) * (opt.abstandFaktor ?? 1)}
-      onFehler={m => protokoll('warnung', m)} onDaneben={() => waehle(0, false)} className="!absolute inset-0">
+      onFehler={m => protokoll('warnung', m)} onDaneben={() => waehle(0, false)} bildVersatz={opt.versatzX ?? 0} className="!absolute inset-0">
       <Szene vergleich={vergleich} />
     </Buehne>
   );
@@ -145,7 +152,7 @@ export function BuehnenWurzel({ children }: { children: ReactNode }) {
 }
 
 // Platz für die 3D-Bühne innerhalb einer Seite; Overlays als children
-export function BuehnenPlatz({ className = '', children, vergleich, startAzimut, abstandFaktor }: { className?: string; children?: ReactNode } & PlatzOptionen) {
+export function BuehnenPlatz({ className = '', children, vergleich, startAzimut, abstandFaktor, versatzX }: { className?: string; children?: ReactNode } & PlatzOptionen) {
   const k = useContext(Kontext);
   const ref = useRef<HTMLDivElement>(null);
   const webglFehler = useDiagnose(s => s.webglFehler);
@@ -154,7 +161,7 @@ export function BuehnenPlatz({ className = '', children, vergleich, startAzimut,
     ref.current.prepend(k.container);
     return () => { if (k.container.parentElement === ref.current) k.container.remove(); };
   }, [k]);
-  useEffect(() => { k?.setOptionen({ vergleich, startAzimut, abstandFaktor }); }, [k, vergleich, startAzimut, abstandFaktor]);
+  useEffect(() => { k?.setOptionen({ vergleich, startAzimut, abstandFaktor, versatzX }); }, [k, vergleich, startAzimut, abstandFaktor, versatzX]);
   return (
     <div ref={ref} className={`relative overflow-hidden touch-none ${className}`}>
       {webglFehler && <Ersatz2D grund={webglFehler} />}

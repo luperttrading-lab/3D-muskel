@@ -23,7 +23,7 @@ interface Props {
   daten: KoerperDaten;
   zustand: AvatarZustand;
   darstellung: Darstellung;
-  auswahl: number;
+  auswahl: number | readonly number[];   // hervorgehobene Einheit(en)
   hautton: 'hell' | 'mittel' | 'dunkel';
   akzent: string;
   gluehStart: number;        // performance.now() des letzten Satzes
@@ -281,6 +281,7 @@ export function AvatarModell({ daten, zustand, darstellung, auswahl, hautton, ak
   const anatAnteil = useRef(0);
   useEffect(() => { dirty.current = true; invalidate(); }, [zustand, auswahl, darstellung, gluehStart, invalidate]);
 
+  const auswahlMenge = useMemo(() => new Set(typeof auswahl === 'number' ? (auswahl ? [auswahl] : []) : auswahl), [auswahl]);
   const aktualisiere = (mu: Float32Array, muRest: number, omega: number) => {
     const t0 = performance.now();
     const muPunkt = muskelProPunkt(masken, mu, muRest);
@@ -299,7 +300,7 @@ export function AvatarModell({ daten, zustand, darstellung, auswahl, hautton, ak
         const e = me[o + k], ton = darstellung === 'atlas' ? 1 + 0.09 * Math.sin(e * 2.399) : 1;
         r += w * ton * farbe[3 * e]; g += w * ton * farbe[3 * e + 1]; b += w * ton * farbe[3 * e + 2];
         glu += w * gl[e];
-        if (e === auswahl) aus += w;
+        if (auswahlMenge.has(e)) aus += w;
         summe += w;
       }
       // Muskelfarbe ohne Sehnenanteil; die Mischung zur Restfarbe macht der Shader mit scharfer Kante

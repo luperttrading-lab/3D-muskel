@@ -4,7 +4,7 @@ import { ansichtZu, rekonstruiere, satzAnwenden, type Ansicht, type MuskelZustan
 import { xpEreignisse, datum, isoWoche, type Ruhetag, type Session, type XpEreignis } from '../engine/xp';
 import { evolution, type EvolutionsStand } from '../engine/archetypen';
 import { UEBUNG, hauptmuskel } from '../engine/uebungen';
-import { EINHEITEN, MUSKEL, einheitIndex, type Seite } from '../engine/muskeln';
+import { ATLAS_GRUPPEN, EINHEITEN, MUSKEL, einheitIndex, gruppeVon, type Seite } from '../engine/muskeln';
 import { oeffneSpeicher, pruefeImport, type Daten, type ExportDatei, type Speicher } from './speicher';
 import { neuesProfil, type Profil } from './profil';
 import { protokoll } from './diagnose';
@@ -42,6 +42,7 @@ interface Zustand {
   feedback: SatzFeedback | null;
   darstellung: Darstellung;
   auswahl: number;
+  auswahlGruppe: string | null;   // Muskelgruppe im Atlas (hervorgehoben, wenn kein einzelner Muskel gewählt ist)
   kamera: Kameraziel;
   muskelMitten: Map<number, [number, number, number]>;
   hinweis: { text: string; art: 'info' | 'xp' | 'fehler'; zeit: number } | null;
@@ -55,6 +56,7 @@ interface Zustand {
   ruhetagMarkieren(): Promise<void>;
   setzeDarstellung(d: Darstellung): void;
   waehle(einheit: number, fahren?: boolean): void;
+  waehleGruppe(id: string | null): void;
   fahreZu(z: Omit<Kameraziel, 'schluessel'>): void;
   setzeMuskelMitten(m: Map<number, [number, number, number]>): void;
   zeige(text: string, art?: 'info' | 'xp' | 'fehler'): void;
@@ -88,6 +90,17 @@ export function blickAuf(index: number, mitten: Map<number, [number, number, num
   return { azimut, hoehe: Math.max(0.45, Math.min(1.45, hoehe)), seitlich: x * (nah ? 0.7 : 0.3), abstand: nah ? 1.75 : m.region === 'waden' ? 1.9 : 2.4 };
 }
 
+// Blick auf eine ganze Gruppe: Mitte aller sichtbaren Einheiten, Richtung aus der Gruppe
+export function blickAufGruppe(id: string, mitten: Map<number, [number, number, number]>): Omit<Kameraziel, 'schluessel'> {
+  const g = ATLAS_GRUPPEN.find(x => x.id === id);
+  if (!g) return {};
+  const punkte = g.muskeln.flatMap(m => (['L', 'R'] as const).map(s => mitten.get(einheitIndex(m, s)))).filter((p): p is [number, number, number] => !!p);
+  const hoehe = punkte.length ? punkte.reduce((a, p) => a + p[1], 0) / punkte.length : 1.1;
+  const azimut = g.ansicht === 'vorn' ? 0 : g.ansicht === 'hinten' ? Math.PI : 1.2;
+  const breit = ['ruecken', 'bauch', 'brust', 'gesaess', 'beine'].includes(g.id);
+  return { azimut, hoehe: Math.max(0.5, Math.min(1.4, hoehe)), seitlich: 0, abstand: breit ? 2.5 : 2.1 };
+}
+
 export const useApp = create<Zustand>((set, get) => ({
   bereit: false,
   speicherArt: '–',
@@ -101,6 +114,7 @@ export const useApp = create<Zustand>((set, get) => ({
   feedback: null,
   darstellung: 'haut',
   auswahl: 0,
+  auswahlGruppe: null,
   kamera: { schluessel: 0 },
   muskelMitten: new Map(),
   hinweis: null,
@@ -207,8 +221,13 @@ export const useApp = create<Zustand>((set, get) => ({
 
   setzeDarstellung(darstellung) { set({ darstellung }); },
   waehle(einheit, fahren = true) {
-    set({ auswahl: einheit });
+    const e = EINHEITEN[einheit - 1];
+    set({ auswahl: einheit, auswahlGruppe: e ? gruppeVon(e.id)?.id ?? null : einheit ? get().auswahlGruppe : null });
     if (einheit && fahren && get().profil.animationen) get().fahreZu(blickAuf(einheit, get().muskelMitten));
+  },
+  waehleGruppe(id) {
+    set({ auswahlGruppe: id, auswahl: 0 });
+    if (id && get().profil.animationen) get().fahreZu(blickAufGruppe(id, get().muskelMitten));
   },
   fahreZu(z) { set({ kamera: { ...z, schluessel: get().kamera.schluessel + 1 } }); },
   setzeMuskelMitten(m) { set({ muskelMitten: m }); },
@@ -229,7 +248,7 @@ export const useApp = create<Zustand>((set, get) => ({
     await speicher?.loescheAlles();
     const profil = neuesProfil(Date.now());
     await speicher?.profil(profil);
-    set({ profil, sessions: [], saetze: [], ruhetage: [], aktiveSession: null, feedback: null, auswahl: 0, ...ableiten(profil, [], [], []) });
+    set({ profil, sessions: [], saetze: [], ruhetage: [], aktiveSession: null, feedback: null, auswahl: 0, auswahlGruppe: null, ...ableiten(profil, [], [], []) });
   },
 }));
 
