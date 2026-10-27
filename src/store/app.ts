@@ -20,6 +20,7 @@ export interface SatzFeedback {
   uebung: string;
 }
 export type Darstellung = 'haut' | 'entwicklung' | 'atlas';
+export interface KoerperVorschau { entwicklung: Float32Array; omega: number; woche: number }
 export type { Kameraziel } from '../avatar/Buehne';
 import type { Kameraziel } from '../avatar/Buehne';
 
@@ -46,6 +47,7 @@ interface Zustand {
   kamera: Kameraziel;
   muskelMitten: Map<number, [number, number, number]>;
   hinweis: { text: string; art: 'info' | 'xp' | 'fehler'; zeit: number } | null;
+  vorschau: KoerperVorschau | null;   // simulierter Körper (Evolution), ersetzt auf der Bühne den echten Stand
 
   start(): Promise<void>;
   profilAendern(p: Partial<Profil>): Promise<void>;
@@ -59,6 +61,7 @@ interface Zustand {
   waehleGruppe(id: string | null): void;
   fahreZu(z: Omit<Kameraziel, 'schluessel'>): void;
   setzeMuskelMitten(m: Map<number, [number, number, number]>): void;
+  setzeVorschau(v: KoerperVorschau | null): void;
   zeige(text: string, art?: 'info' | 'xp' | 'fehler'): void;
   exportieren(): ExportDatei;
   importieren(json: unknown): Promise<void>;
@@ -118,6 +121,7 @@ export const useApp = create<Zustand>((set, get) => ({
   kamera: { schluessel: 0 },
   muskelMitten: new Map(),
   hinweis: null,
+  vorschau: null,
 
   async start() {
     try {
@@ -231,6 +235,7 @@ export const useApp = create<Zustand>((set, get) => ({
   },
   fahreZu(z) { set({ kamera: { ...z, schluessel: get().kamera.schluessel + 1 } }); },
   setzeMuskelMitten(m) { set({ muskelMitten: m }); },
+  setzeVorschau(v) { set({ vorschau: v }); },
   zeige(text, art = 'info') { set({ hinweis: { text, art, zeit: Date.now() } }); },
 
   exportieren() {

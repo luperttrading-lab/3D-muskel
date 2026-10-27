@@ -87,6 +87,7 @@ function Szene({ vergleich }: { vergleich: boolean }) {
   const ohneBewegung = useReduzierteBewegung();
   const omega = KOERPERFORMEN[profil.koerperform].omega[profil.geschlecht];
   const akzent = AKZENTE[profil.akzent].farbe;
+  const vorschau = useApp(s => s.vorschau);
 
   const gluehen = useMemo(() => {
     const g = new Float32Array(ANZAHL_EINHEITEN);
@@ -95,8 +96,11 @@ function Szene({ vergleich }: { vergleich: boolean }) {
     for (const w of feedback.wirkung) g[w.einheit] = Math.min(1, 0.25 + 0.75 * w.reiz / max);
     return g;
   }, [feedback]);
-  const zustand = useMemo(() => zustandAus(ansicht.entwicklung, ansicht.pump, MU_START, omega, profil.modus, darstellung, gluehen, profil.unterStart),
-    [ansicht, omega, profil.modus, profil.unterStart, darstellung, gluehen]);
+  // Vorschau (Evolution): simulierter Stand ohne Pump, Körperfett nach Vorgabe
+  const zustand = useMemo(() => vorschau
+    ? zustandAus(vorschau.entwicklung, new Float32Array(ANZAHL_EINHEITEN), MU_START, vorschau.omega, profil.modus, darstellung, new Float32Array(ANZAHL_EINHEITEN), profil.unterStart)
+    : zustandAus(ansicht.entwicklung, ansicht.pump, MU_START, omega, profil.modus, darstellung, gluehen, profil.unterStart),
+  [vorschau, ansicht, omega, profil.modus, profil.unterStart, darstellung, gluehen]);
   const start = useMemo(() => zustandAus(new Float32Array(ANZAHL_EINHEITEN), new Float32Array(ANZAHL_EINHEITEN), MU_START, omega, profil.modus, darstellung, new Float32Array(ANZAHL_EINHEITEN), false),
     [omega, profil.modus, darstellung]);
   const beiMasken = useCallback((_: Masken, mitten: Map<number, [number, number, number]>) => setzeMuskelMitten(mitten), [setzeMuskelMitten]);

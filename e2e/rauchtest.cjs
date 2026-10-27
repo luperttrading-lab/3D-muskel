@@ -12,7 +12,8 @@ require('fs').mkdirSync(aus, { recursive: true });
   const fehler = [];
   page.on('pageerror', e => fehler.push('pageerror: ' + e.message));
   page.on('console', m => { if (m.type() === 'error') fehler.push('console: ' + m.text().slice(0, 300)); });
-  const bild = async (name) => { await page.screenshot({ path: `${aus}/${name}.png` }); console.log('Bild', name); };
+  // großzügige Frist: die Software-Grafik im Testrechner arbeitet nach Animationen einen Rückstau ab
+  const bild = async (name) => { await page.screenshot({ path: `${aus}/${name}.png`, timeout: 120000 }); console.log('Bild', name); };
   const pruefe = (ok, text) => { console.log(ok ? '✓' : '✗', text); if (!ok) process.exitCode = 1; };
 
   await page.goto(url);
@@ -71,6 +72,22 @@ require('fs').mkdirSync(aus, { recursive: true });
   await page.getByRole('navigation').getByRole('button', { name: 'Evolution' }).click();
   await page.waitForTimeout(3000);
   await bild('09-evolution');
+  // Körper-Vorschau: 26 Wochen abspielen, Anatomie zeigen, zurück zum echten Stand
+  const leiste = page.getByRole('group', { name: 'Vorschau abspielen' });
+  await page.getByRole('button', { name: '▶ Körper simulieren' }).click();
+  await leiste.getByRole('button', { name: 'Nochmal' }).waitFor({ timeout: 60000 });
+  await bild('09b-vorschau-woche26');
+  pruefe(await page.getByText('Woche 26', { exact: true }).isVisible(), 'Vorschau läuft bis Woche 26');
+  await page.getByRole('group', { name: 'Körperfett am Ende' }).getByRole('button', { name: 'definiert' }).click();
+  await page.getByRole('group', { name: 'Darstellung' }).getByRole('button', { name: 'Anatomie' }).click();
+  await page.waitForTimeout(2500);
+  await bild('09c-vorschau-anatomie');
+  await page.locator('#inhalt').evaluate(el => el.scrollTo(0, 420)).catch(() => {});
+  await page.waitForTimeout(400);
+  await bild('09d-vorschau-regler');
+  await leiste.getByRole('button', { name: 'Zurück zu jetzt' }).click();
+  await page.waitForTimeout(800);
+  pruefe(await page.locator('span', { hasText: /^Jetzt$/ }).isVisible(), 'Zurück zu jetzt zeigt wieder den echten Stand');
 
   await page.getByRole('button', { name: 'Einstellungen und Diagnose' }).click();
   await page.waitForTimeout(500);
