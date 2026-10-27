@@ -110,14 +110,16 @@ Die Anatomie-Ansicht nutzt je Geschlecht drei Texturen in `public/modelle/` (`an
 `-hoehe.png`, `-karte.png`). Sie werden ohne Grafikprogramm aus dem Körpernetz und den Muskelmasken gebacken:
 
 ```sh
-npm run anatomie     # tools/anatomie-backen.mjs, etwa 25 s je Geschlecht, braucht python3 mit Pillow
+npm run anatomie     # tools/anatomie-backen.mjs, etwa 30 s je Geschlecht, braucht python3 mit Pillow
 ```
 
 `tools/anatomie-kern.ts` wertet je Texel die Masken aus und schneidet die sichtbaren Muskeln nach ihrer echten Form zu
 (Brust, Trapez, Lat, Beckenkamm, Leistenband, Gesäß, Deltamuskel, Wade …). Die Karte trägt je Texel die Einheit;
 zur Laufzeit färbt die App darüber Entwicklung und Auswahl, und ein Tipp trifft den Muskel texelgenau.
 Muskelgrenzen sind Furchen im Relief statt gezeichneter Linien; helle Faszie gibt es nur an Linea alba, Mittellinien und den
-Sehnenzügen des Sixpacks. Fasern sind Bündel mit eigener Helligkeit, Sehnenübergänge fiedern aus. Muskelgewebe bekommt im
+Sehnenzügen des Sixpacks. Fasern sind gezeichnete Stränge mit eigener Helligkeit (in der Farbe, nicht im Relief, damit sie
+nicht glitzern; wo die Textur zu grob ist, doppelt so breit), Sehnenübergänge fiedern aus. Die Reliefkarte trägt im
+Grünkanal die Furchentiefe, damit Furchen kein Glanzlicht fangen. Muskelgewebe bekommt im
 Shader einen feuchten Glanz, Sehnen bleiben seidenmatt.
 
 ## Lizenz der Körpermodelle

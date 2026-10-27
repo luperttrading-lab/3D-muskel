@@ -166,6 +166,7 @@ function kleidMaterial(map: THREE.Texture, akzent: THREE.Color, gelenke: Koerper
         diffuseColor.rgb = mix(diffuseColor.rgb, hautFarbe, uAnatomie * vHautZone * (1.0 - decke));
         // Texturpaket (sobald geladen): gemalte Anatomie, pixelgenaue Einheiten, Relief – ersetzt das Prozedurale
         float gewebe = 0.0;   // 1 = Muskel, 0 = Sehne/Knochen/Haut (für Glanz)
+        float hoehle = 0.0;   // Furchentiefe: dort kein Glanz
         if (uKarteAn > 0.5) {
           vec4 kt = texture2D(uAnatKarte, vMapUv);
           gewebe = kt.g * step(0.5, floor(kt.r * 255.0 + 0.5)) * uAnatomie;
@@ -180,15 +181,22 @@ function kleidMaterial(map: THREE.Texture, akzent: THREE.Color, gelenke: Koerper
           vec3 tex = mix(entw, anat, uAnatomie);
           tex = mix(tex, hautFarbe, kt.b * step(id, 0.5) * uAnatomie);
           diffuseColor.rgb = mix(nachKleid, tex, uFarbAnteil);
-          float hoeheTex = (texture2D(uAnatHoehe, vMapUv).r - 0.5) * 0.016;
+          vec3 ht = texture2D(uAnatHoehe, vMapUv).rgb;
+          float hoeheTex = (ht.r - 0.5) * 0.016;
+          hoehle = ht.g * uAnatomie;
           hoehe = (uAnatomie + 0.35 * (uFarbAnteil - uAnatomie)) * hoeheTex - (1.0 - uFarbAnteil) * hautTiefe;
         }`)
       .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
-        roughnessFactor = mix(roughnessFactor, mix(0.55, 0.44, gewebe), uAnatomie * uKarteAn);`)
+        roughnessFactor = mix(roughnessFactor, mix(0.55, 0.46, gewebe) + 0.3 * hoehle, uAnatomie * uKarteAn);`)
       .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
         normal = relief(-vViewPosition, normal, hoehe);`)
-      .replace('#include <clearcoat_normal_fragment_begin>', `#ifdef USE_CLEARCOAT
-        vec3 clearcoatNormal = normal;
+      .replace('#include <lights_fragment_end>', `#include <lights_fragment_end>
+        // Furchen fangen kein Glanzlicht (sonst farbige Säume vom Fülllicht)
+        reflectedLight.directSpecular *= 1.0 - 0.85 * hoehle;
+        reflectedLight.indirectSpecular *= 1.0 - 0.7 * hoehle;
+        #ifdef USE_CLEARCOAT
+        clearcoatSpecularDirect *= 1.0 - hoehle;
+        clearcoatSpecularIndirect *= 1.0 - hoehle;
         #endif`)
       .replace('#include <lights_physical_fragment>', `#include <lights_physical_fragment>
         #ifdef USE_CLEARCOAT
@@ -438,7 +446,7 @@ export function AvatarModell({ daten, zustand, darstellung, auswahl, hautton, ak
     if (Math.abs(ad) > 0.002) { anatAnteil.current += ad * (bewegung ? Math.min(1, dt * 8) : 1); aktiv = true; } else anatAnteil.current = az;
     uniforms.uAnatomie.value = anatAnteil.current;
     mat.roughness = 0.58 - 0.16 * anatAnteil.current;   // Muskelgewebe glänzt leicht feucht
-    mat.clearcoat = 0.001 + 0.12 * anatAnteil.current;     // im Shader nur auf Muskelgewebe
+    mat.clearcoat = 0.001 + 0.08 * anatAnteil.current;     // im Shader nur auf Muskelgewebe
     mat.sheen = 0.02 + 0.33 * (1 - farbAnteil.current);   // Haut-Glanz würde die Farbskalen auswaschen
     if (aktiv || glueht || dirty.current) {
       aktualisiere(a.mu, a.muRest, a.omega);

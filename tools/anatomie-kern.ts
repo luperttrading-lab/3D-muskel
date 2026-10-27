@@ -8,7 +8,7 @@
 //
 // Ergebnis je Geschlecht:
 //   farbe  RGB  – gemalte Anatomie (sRGB)
-//   hoehe  L    – Relief für Bump-Mapping (0,5 = neutral)
+//   hoehe  RGB  – R = Relief für Bump-Mapping (0,5 = neutral), G = Furchentiefe (dämpft Glanz)
 //   karte  RGBA – R = Einheit (0 = Sehne/Haut), G = Muskelanteil (255 = Muskel, 0 = Sehne), B = Hautzone
 
 import fs from 'node:fs';
@@ -184,7 +184,8 @@ export function backe(g: 'm' | 'w', N = 2048): Ergebnis {
         return ix(u > 0.58 && v > 0.45 ? 'serratus' : u < uRect(v) ? 'bauch_g' : 'bauch_s', s);
       }
     }
-    if ((id === 'bauch_g' || id === 'bauch_s') && nz > -0.05 && u < 0.6 && v >= 0.45) return ix(u < uRect(v) ? 'bauch_g' : 'bauch_s', s);
+    if ((id === 'bauch_g' || id === 'bauch_s' || (id === '' && u > 0.03 && v < 0.53 + 0.22 * Math.pow(Math.min(1, u), 1.6))) && nz > -0.05 && u < 0.6 && v >= 0.45)
+      return ix(u < uRect(v) ? 'bauch_g' : 'bauch_s', s);   // auch Maskenlücken am Rippenbogen
     // Becken und Oberschenkel: Grenzen im Koordinatensystem des Oberschenkels (Winkel w um die Achse, Höhe v),
     // damit Beckenkamm, Leistenband, Gesäßfalte und Spanner der Oberschenkelbinde glatt verlaufen
     if (UNTEN.has(id) && v < 0.45 && u < 1.4) {
@@ -305,6 +306,10 @@ export function backe(g: 'm' | 'w', N = 2048): Ergebnis {
       const breite = v > 0.14 ? 0.4 * Math.max(0, 1 - (v - 0.14) / 0.32) : 0.4 * Math.max(0, 1 - (0.14 - v) / 0.24);
       s = id === 'strecker' && v < 0.14 ? 0.88 : 0.88 * (1 - glatt(breite - 0.015, breite + 0.015, u)) * glatt(0.05, 0.3, -nz);
     } else if (id === 'bauch_s' && nz > -0.2) {
+      // Ursprungszacken an den unteren Rippen, in Flucht der Sägemuskel-Zacken; abwechselnd lang (Verzahnung)
+      const q = (y + 0.6 * z) / 0.026, j = Math.floor(q), lang = ((j % 2) + 2) % 2;
+      const spitze = 0.5 + 0.07 * lang + 0.16 * Math.abs(q - j - 0.5);       // jede Zacke endet als Finger
+      if (v > 0.3 && u > spitze) k = 1 + (((j % 8) + 8) % 8);
       // Aponeurose des äußeren schrägen Bauchmuskels: schmal neben dem Sixpack, nach unten breiter, Saum am Leistenband
       const rand = uRect(v) + 0.03 + 0.1 * glatt(0.38, 0.05, v);
       const neben = 1 - glatt(rand - 0.015, rand + 0.015, u);
@@ -359,16 +364,17 @@ export function backe(g: 'm' | 'w', N = 2048): Ergebnis {
   for (let py = 0; py < N; py++) for (let px = 0; px < N; px++) {
     const i = py * N + px;
     if (dreieck[i] < 0) continue;
-    let st = 0, hl = 0;
+    let st = 0, hl = 0, jb = i;
     for (const j of [px + 1 < N ? i + 1 : -1, py + 1 < N ? i + N : -1]) {
       if (j < 0 || dreieck[j] < 0 || teil[j] === teil[i]) continue;
       // nur echte Nachbarn im Raum (UV-Nähte trennen Texel, die im Körper weit auseinanderliegen)
       const d = Math.hypot(pos[3 * i] - pos[3 * j], pos[3 * i + 1] - pos[3 * j + 1], pos[3 * i + 2] - pos[3 * j + 2]);
       if (d > 0.006) continue;
       const sv = staerke(teil[i], teil[j]) * (1 - 0.75 * Math.min(sehne[i], sehne[j]));
-      if (sv > st) { st = sv; hl = hellVon(teil[i], teil[j]); }
+      if (sv > st) { st = sv; hl = hellVon(teil[i], teil[j]); jb = j; }
     }
-    if (st > 0) { randPkte.push(pos[3 * i], pos[3 * i + 1], pos[3 * i + 2]); randSt.push(st); randHell.push(hl); }
+    // Grenzpunkt genau zwischen den beiden Texeln (halbiert die Treppenstufen schräger Grenzen)
+    if (st > 0) { randPkte.push((pos[3 * i] + pos[3 * jb]) / 2, (pos[3 * i + 1] + pos[3 * jb + 1]) / 2, (pos[3 * i + 2] + pos[3 * jb + 2]) / 2); randSt.push(st); randHell.push(hl); }
   }
 
   // ---------- 4. Abstand jedes Texels zur nächsten Grenze (3D, Gitter 2 cm) ----------
@@ -397,10 +403,57 @@ export function backe(g: 'm' | 'w', N = 2048): Ergebnis {
     abstand[i] = Math.sqrt(best); naechsteSt[i] = bs; naechsteHell[i] = bh;
   }
 
+  // ---------- 4a. Abstandsfeld leicht glätten (Treppen aus dem Texelraster) ----------
+  const abstandRoh = abstand.slice();   // für die feinen hellen Linien (würden durch die Glättung verschwinden)
+  {
+    const RR = 3, kk = Array.from({ length: 2 * RR + 1 }, (_, k) => Math.exp(-(((k - RR) / 1.6) ** 2) / 2));
+    const zw = new Float32Array(NN2);
+    for (const [quelle, ziel, schritt] of [[abstand, zw, 1], [zw, abstand, N]] as [Float32Array, Float32Array, number][]) {
+      const kopie = quelle === abstand ? abstand.slice() : quelle;
+      for (let py = 0; py < N; py++) for (let px = 0; px < N; px++) {
+        const i = py * N + px;
+        if (dreieck[i] < 0) continue;
+        let sw = 0, sv = 0;
+        for (let k = -RR; k <= RR; k++) {
+          const xx = schritt === 1 ? px + k : px, yy = schritt === 1 ? py : py + k;
+          if (xx < 0 || yy < 0 || xx >= N || yy >= N) continue;
+          const j = yy * N + xx;
+          if (dreieck[j] < 0) continue;
+          const d3 = Math.hypot(pos[3 * i] - pos[3 * j], pos[3 * i + 1] - pos[3 * j + 1], pos[3 * i + 2] - pos[3 * j + 2]);
+          if (d3 > 0.008) continue;                                       // UV-Naht: im Körper nicht benachbart
+          sw += kk[k + RR]; sv += kk[k + RR] * kopie[j];
+        }
+        ziel[i] = sw > 0 ? sv / sw : kopie[i];
+      }
+    }
+  }
+
+  // ---------- 4b. Wölbung je Muskel glätten ----------
+  // Das Abstandsfeld zur nächsten Grenze hat Grate (Dachform, Pyramiden auf dem Sixpack). Gauß-Glättung im
+  // Texturraum, nur innerhalb derselben Einheit, rundet die Bäuche ab; die Furche bleibt scharf (eigener Term).
+  const wolb = new Float32Array(NN2), tmp = new Float32Array(NN2);
+  for (let i = 0; i < NN2; i++) if (dreieck[i] >= 0) wolb[i] = 1 - (1 - Math.min(1, abstand[i] / 0.032)) ** 2.2;
+  const R = 12, kern = Array.from({ length: 2 * R + 1 }, (_, k) => Math.exp(-(((k - R) / 6) ** 2) / 2));
+  for (const [quelle, ziel, schritt] of [[wolb, tmp, 1], [tmp, wolb, N]] as [Float32Array, Float32Array, number][]) {
+    for (let py = 0; py < N; py++) for (let px = 0; px < N; px++) {
+      const i = py * N + px;
+      if (dreieck[i] < 0) continue;
+      let sw = 0, sv = 0;
+      for (let k = -R; k <= R; k++) {
+        const xx = schritt === 1 ? px + k : px, yy = schritt === 1 ? py : py + k;
+        if (xx < 0 || yy < 0 || xx >= N || yy >= N) continue;
+        const j = yy * N + xx;
+        if (dreieck[j] < 0 || einheit[j] !== einheit[i]) continue;
+        sw += kern[k + R]; sv += kern[k + R] * quelle[j];
+      }
+      ziel[i] = sw > 0 ? sv / sw : quelle[i];
+    }
+  }
+
   // ---------- 5. Farbe und Relief ----------
   // Plastik entsteht aus Licht, nicht aus Linien: Muskelbäuche wölben sich, Grenzen sind Furchen (dunkel, im Relief
   // tief), Fasern sind gerundete Bündel mit unregelmäßiger Helligkeit, Sehnenübergänge fiedern entlang der Fasern aus.
-  const farbe = new Uint8Array(NN2 * 3), hoehe = new Uint8Array(NN2), karte = new Uint8Array(NN2 * 4);
+  const farbe = new Uint8Array(NN2 * 3), hoehe = new Uint8Array(NN2 * 3), karte = new Uint8Array(NN2 * 4);
   const MUSKEL_D: V3 = [88, 28, 23], MUSKEL_M: V3 = [174, 72, 55], MUSKEL_H: V3 = [228, 140, 112];
   const SEHNE: V3 = [234, 227, 224], KNOCHEN: V3 = [212, 196, 176], FASZIE: V3 = [238, 218, 210];
   const lin = (c: number) => { const x = c / 255; return x <= 0.04045 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4; };
@@ -410,35 +463,47 @@ export function backe(g: 'm' | 'w', N = 2048): Ergebnis {
     if (dreieck[i] < 0) continue;
     const x = pos[3 * i], y = pos[3 * i + 1], z = pos[3 * i + 2], e = einheit[i];
     const d = abstand[i], st = naechsteSt[i], hell = naechsteHell[i];
-    const bauch = 1 - (1 - Math.min(1, d / 0.032)) ** 2.2;                 // breite Wölbung, steiler Rand
+    const bauch = Math.min(wolb[i], 1 - (1 - Math.min(1, d / 0.032)) ** 2.2 + 0.12);   // geglättet, am Rand nicht höher als roh
     const furche = st * (1 - glatt(0.0, 0.011, d)) ** 1.8;                  // ~1 cm breite, weich auslaufende Furche
-    const linieHell = hell * st * (1 - glatt(0.0004, 0.0011, d));            // feine helle Faszie (Linea alba, Sehnenzüge)
+    const linieHell = hell * st * (1 - glatt(0.0007, 0.0017, abstandRoh[i]));   // helle Faszie (Linea alba, Sehnenzüge), ~3 mm
     const korn = rauschen(x * 400, y * 400, z * 400) - 0.5, wolke = rauschen(x * 25, y * 25, z * 25) - 0.5;
-    // Faserbündel (~3,5 mm): gerundet, mit dunkler Naht, eigener Helligkeit und Streifen entlang des Bündels
+    // Faserstränge (~4 mm) wie gezeichnet: feine dunkle Trennlinie, gerundete Mitte, eigene Helligkeit je Strang,
+    // Streifen entlang des Strangs; Breite schwankt. Nur Farbe – im Relief würden sie glitzern.
     let bund = 0.5, naht = 0, strahl = 0, zufall = 0;
     if (e) {
       const ph = phase[i];
-      const nb = px + 1 < N && dreieck[i + 1] >= 0 && einheit[i + 1] === e ? Math.abs(phase[i + 1] - ph) : 0;
-      const aa = 1 - glatt(0.12, 0.24, nb);                                  // zu dicht für die Auflösung: weglassen
-      const q = 1.5 * ph + 0.6 * (rauschen(x * 40, y * 40, z * 40) - 0.5), idx = Math.floor(q), fr = q - idx;
-      bund = 0.5 + (Math.sqrt(Math.sin(Math.PI * fr)) - 0.5) * aa;
-      naht = (1 - glatt(0.0, 0.16, Math.min(fr, 1 - fr))) * aa;
-      zufall = (hash(idx, e, 7) - 0.5) * aa;
-      strahl = (rauschen(x * 90 + idx * 1.7, y * 90 + idx * 0.9, z * 90) - 0.5) * aa;
+      // Phasenänderung je Texel in beiden Richtungen: wo die Textur für feine Stränge zu grob ist, doppelt so breite
+      // Stränge (zweite Stufe) statt Ausblenden
+      const dx = px + 1 < N && dreieck[i + 1] >= 0 && einheit[i + 1] === e ? Math.abs(phase[i + 1] - ph) : 0;
+      const dy = py + 1 < N && dreieck[i + N] >= 0 && einheit[i + N] === e ? Math.abs(phase[i + N] - ph) : 0;
+      const nb = Math.max(dx < 0.5 ? dx : 0, dy < 0.5 ? dy : 0);
+      const grob = glatt(0.13, 0.2, 1.32 * nb), aa = 1 - glatt(0.15, 0.24, 0.66 * nb);
+      const verzug = 0.55 * (rauschen(x * 30, y * 30, z * 30) - 0.5) + 0.18 * (rauschen(x * 140, y * 140, z * 140) - 0.5);
+      const strang = (f: number) => {
+        const q = f * ph + verzug, idx = Math.floor(q), fr = q - idx, rand = hash(idx, e, 11);
+        const breite = 0.08 + 0.08 * rand;                                     // halbe Trennlinie im Strangmaß
+        return { naht: 1 - glatt(0.3 * breite, breite, Math.min(fr, 1 - fr)), bund: Math.sin(Math.PI * fr) ** 0.7 - 0.6,
+          zufall: hash(idx, e, 7) - 0.5, strahl: rauschen(x * 70 + idx * 1.7, y * 70 + idx * 0.9, z * 70) - 0.5 };
+      };
+      const fein = strang(1.32), breit = strang(0.66);
+      const m = (a: number, b: number) => mischen(a, b, grob) * aa;
+      naht = m(fein.naht, breit.naht); bund = 0.5 + m(fein.bund, breit.bund);
+      zufall = m(fein.zufall, breit.zufall); strahl = m(fein.strahl, breit.strahl);
     }
     // Sehne: Übergang fiedert entlang der Bündel aus statt als weicher Verlauf
     const sRoh = sehne[i];
     let s = sRoh;
     if (e) {
-      s = Math.min(1, Math.max(0, sRoh + (0.5 * (bund - 0.5) + 0.35 * strahl) * 4 * sRoh * (1 - sRoh)));
+      const fieder = idVon(e) === 'bauch_s' ? 0.15 : 0.6;
+      s = Math.min(1, Math.max(0, sRoh + fieder * (0.5 * (bund - 0.5) + 0.35 * strahl) * 4 * sRoh * (1 - sRoh)));
       s = Math.min(0.95, glatt(0.12, 0.88, s));
     }
     // Muskel: Wölbung hell, Furche tief und satt; Bündel, Streifen, Wolken und Korn brechen die Gleichförmigkeit
-    const licht = 0.2 + 0.64 * bauch + 0.05 * (bund - 0.5) + 0.07 * zufall + 0.07 * strahl + 0.08 * wolke + 0.03 * korn - 0.05 * naht - 0.24 * furche;
+    const licht = 0.2 + 0.6 * bauch + 0.13 * (bund - 0.5) + 0.12 * zufall + 0.07 * strahl + 0.06 * wolke + 0.02 * korn - 0.17 * naht - 0.24 * furche;
     const l = Math.min(1, Math.max(0, licht));
     const muskel: V3 = [0, 1, 2].map(k => l < 0.5 ? mischen(MUSKEL_D[k], MUSKEL_M[k], l / 0.5) : mischen(MUSKEL_M[k], MUSKEL_H[k], (l - 0.5) / 0.5)) as V3;
     // Sehne perlmuttartig mit Faserstreifen, Knochen elfenbeinfarben
-    const sh = 0.93 + 0.05 * (bund - 0.5) + 0.04 * strahl + 0.03 * wolke + 0.02 * korn - 0.1 * furche;
+    const sh = 0.94 + 0.03 * (bund - 0.5) + 0.04 * strahl + 0.03 * wolke + 0.02 * korn - 0.04 * naht - 0.1 * furche;
     const basis = e === 0 ? KNOCHEN : SEHNE;
     const c: V3 = [0, 1, 2].map(k => {
       let v = mischen(muskel[k], basis[k] * sh, s);
@@ -447,10 +512,10 @@ export function backe(g: 'm' | 'w', N = 2048): Ergebnis {
     }) as V3;
     farbe[3 * i] = c[0]; farbe[3 * i + 1] = c[1]; farbe[3 * i + 2] = c[2];
     if (e && s < 0.2) { lumSumme += 0.2126 * lin(c[0]) + 0.7152 * lin(c[1]) + 0.0722 * lin(c[2]); lumAnzahl++; }
-    // Relief: Bauch hoch, Furche tief, Bündel fein gerundet; Sehnen flach mit leichten Längsrippen
-    const h = 0.5 + (1 - s) * (0.3 * bauch + 0.012 * (bund - 0.5) - 0.008 * naht + 0.008 * strahl)
-      + s * 0.008 * (bund - 0.5) - 0.2 * furche + 0.004 * korn + 0.28 * hals2[i];
-    hoehe[i] = Math.max(0, Math.min(255, Math.round(h * 255)));
+    // Relief nur grob: Bauch hoch, Furche tief (Fasern stecken in der Farbe). G = Furchentiefe für Glanzdämpfung
+    const h = 0.5 + (1 - s) * 0.3 * bauch - 0.2 * furche + 0.28 * hals2[i];
+    hoehe[3 * i] = Math.max(0, Math.min(255, Math.round(h * 255)));
+    hoehe[3 * i + 1] = Math.round(255 * Math.min(1, furche));
     karte[4 * i] = e; karte[4 * i + 1] = Math.round(255 * (1 - s)); karte[4 * i + 2] = Math.round(255 * hautzone[i]); karte[4 * i + 3] = 255;
   }
   console.log(`${g}: mittlere Muskel-Luminanz (linear) ${(lumSumme / Math.max(1, lumAnzahl)).toFixed(3)}`);
@@ -469,7 +534,7 @@ export function backe(g: 'm' | 'w', N = 2048): Ergebnis {
     }
     for (let k = 0; k < neu.length; k += 2) {
       const i = neu[k], j = neu[k + 1];
-      farbe.copyWithin(3 * i, 3 * j, 3 * j + 3); hoehe[i] = hoehe[j]; karte.copyWithin(4 * i, 4 * j, 4 * j + 4);
+      farbe.copyWithin(3 * i, 3 * j, 3 * j + 3); hoehe.copyWithin(3 * i, 3 * j, 3 * j + 3); karte.copyWithin(4 * i, 4 * j, 4 * j + 4);
     }
     for (let k = 0; k < neu.length; k += 2) belegt[neu[k]] = 1;
   }
