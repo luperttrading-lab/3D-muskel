@@ -6,7 +6,7 @@ import { useFrame, useLoader, useThree, type ThreeEvent } from '@react-three/fib
 import * as THREE from 'three';
 import type { Begleiter, KoerperDaten } from './daten';
 import { berechneAnatomie, berechneMasken, hauptEinheit, MAX_JE_PUNKT, type Masken } from './masken';
-import { Verformer, muskelProPunkt } from './morph';
+import { Verformer, breitenFeld, muskelProPunkt } from './morph';
 import { poseMatrizen } from './pose';
 import { EINHEITEN, einheitIndex, SEITEN } from '../engine/muskeln';
 import { atlasFarbe } from '../ui/farben';
@@ -246,6 +246,8 @@ function BegleitNetz({ b, muRest, omega, bezug, basis }: { b: Begleiter; muRest:
   );
 }
 
+// Muskeln, die den Oberkörper breiter machen (V-Form), mit Gewicht
+const BREITE_IDS: [string, number][] = [['lat', 0.3], ['delt_s', 0.15], ['delt_v', 0.08], ['delt_h', 0.08], ['brust_u', 0.12], ['brust_o', 0.06], ['trapez_o', 0.08], ['trapez_m', 0.05], ['serratus', 0.08]];
 const ARM_IDS = ['bizeps', 'trizeps', 'brachialis', 'brachiorad', 'ua_beuger', 'ua_strecker', 'delt_v', 'delt_s', 'delt_h'];
 
 export function AvatarModell({ daten, zustand, darstellung, auswahl, hautton, akzent, gluehStart, bewegung, position, basis = import.meta.env.BASE_URL, pose = true, aoStaerke = 0.85, onWahl, onMasken, onMorphMs }: Props) {
@@ -254,6 +256,8 @@ export function AvatarModell({ daten, zustand, darstellung, auswahl, hautton, ak
   // Haltung: Arme locker seitlich (Skelett und Gewichte aus MakeHuman); gilt ab der nächsten Verformung
   const poseM = useMemo(() => (daten.skelett ? poseMatrizen(daten.skelett) : null), [daten]);
   useMemo(() => verformer.setzePose(daten.haut, pose ? poseM : null), [verformer, daten, pose, poseM]);
+  const feldBreite = useMemo(() => breitenFeld(daten.koerper, daten.gelenke, daten.haut, daten.skelett), [daten]);
+  const breiteIdx = useMemo(() => SEITEN.map(s => BREITE_IDS.map(([id, w]) => [einheitIndex(id, s), w] as [number, number])), []);
   const masken = useMemo(() => berechneMasken(daten.koerper, daten.gelenke), [daten]);
   const haut = useLoader(THREE.TextureLoader, `${basis}modelle/haut-${daten.geschlecht}-${hautton}.jpg`);
   const akzentFarbe = useMemo(() => new THREE.Color(akzent), [akzent]);
@@ -397,6 +401,10 @@ export function AvatarModell({ daten, zustand, darstellung, auswahl, hautton, ak
   const aktualisiere = (mu: Float32Array, muRest: number, omega: number) => {
     const t0 = performance.now();
     const muPunkt = muskelProPunkt(masken, mu, muRest);
+    // V-Form je Seite aus Lat, Schultern, Brust und Trapez relativ zum Startmuskel (Arcade-Spanne 0,42 → 1,3 = 0,88)
+    const mu0 = zustand.bezug?.mu;
+    const breite = breiteIdx.map(liste => mu0 === undefined ? 0 : Math.min(1.3, Math.max(0, (liste.reduce((s, [e, w]) => s + w * mu[e], 0) - mu0) / 0.88)));
+    verformer.setzeBreite(feldBreite, breite[0], breite[1]);
     verformer.verforme(muPunkt, omega, zustand.bezug);
     // Sichtbare Definition: wächst mit dem Muskel, verschwindet unter Fett
     const glatt = (a: number, b: number, x: number) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };

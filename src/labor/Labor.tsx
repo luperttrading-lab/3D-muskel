@@ -34,7 +34,9 @@ function Ansicht({ g, azimut }: { g: Geschlecht; azimut: number }) {
     const wieApp = q.get('farben') === 'app', decke = q.get('farben') === 'decke';
     farbe.set(wieApp ? HAUT_OHNE_MUSKEL.atlas : decke ? [0.9, 0.05, 0.05] : [0.75, 0.72, 0.7]);
     for (let i = 1; i < ANZAHL_EINHEITEN; i++) farbe.set(wieApp ? atlasFarbe(zahl('wert', 0.5)) : decke ? [0.1, 0.55, 0.2] : farbeFuer(i), 3 * i);
-    return { mu, muRest: liste ? mu[0] : zahl('mu', 0.42), omega: zahl('omega', g === 'm' ? 0.66 : 0.62), gluehen: new Float32Array(ANZAHL_EINHEITEN), farbe };
+    const omega = zahl('omega', g === 'm' ? 0.66 : 0.62);
+    // Bezug Startmuskel 0,42: Muskel über dem Start macht den Oberkörper breiter (V-Form), wie in der App
+    return { mu, muRest: liste ? mu[0] : zahl('mu', 0.42), omega, bezug: { mu: 0.42, omega }, gluehen: new Float32Array(ANZAHL_EINHEITEN), farbe };
   }, [g]);
   if (!daten) return <div className="text-slate-400 p-4">lädt …</div>;
   return (
