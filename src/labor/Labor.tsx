@@ -4,6 +4,7 @@ import { AvatarModell, type AvatarZustand, type Darstellung } from '../avatar/Av
 import { Buehne } from '../avatar/Buehne';
 import { ladeKoerper, type Geschlecht, type KoerperDaten } from '../avatar/daten';
 import { ANZAHL_EINHEITEN, EINHEITEN } from '../engine/muskeln';
+import { atlasFarbe, HAUT_OHNE_MUSKEL } from '../ui/farben';
 
 const q = new URLSearchParams(location.hash.split('?')[1] ?? '');
 const zahl = (k: string, d: number) => (q.has(k) ? Number(q.get(k)) : d);
@@ -24,8 +25,10 @@ function Ansicht({ g, azimut }: { g: Geschlecht; azimut: number }) {
     const einzel = q.get('einzel');
     if (einzel) for (const e of EINHEITEN) if (e.id === einzel && (!q.get('seite') || q.get('seite') === e.seite)) mu[e.index] = zahl('wert', 1);
     const farbe = new Float32Array(ANZAHL_EINHEITEN * 3);
-    farbe.set([0.75, 0.72, 0.7]);
-    for (let i = 1; i < ANZAHL_EINHEITEN; i++) farbe.set(farbeFuer(i), 3 * i);
+    // farben=app: Farben wie in der App (Anatomie-Ansicht), sonst Prüffarben je Einheit
+    const wieApp = q.get('farben') === 'app';
+    farbe.set(wieApp ? HAUT_OHNE_MUSKEL.atlas : [0.75, 0.72, 0.7]);
+    for (let i = 1; i < ANZAHL_EINHEITEN; i++) farbe.set(wieApp ? atlasFarbe(zahl('wert', 0.5)) : farbeFuer(i), 3 * i);
     return { mu, muRest: liste ? mu[0] : zahl('mu', 0.42), omega: zahl('omega', g === 'm' ? 0.66 : 0.62), gluehen: new Float32Array(ANZAHL_EINHEITEN), farbe };
   }, [g]);
   if (!daten) return <div className="text-slate-400 p-4">lädt …</div>;

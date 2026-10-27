@@ -160,3 +160,130 @@ export function berechneMasken(netz: FormNetz, gelenke: Record<string, V3>): Mas
 export function hauptEinheit(m: Masken, i: number, schwelle = 0.25): number {
   return m.gewicht[i * MAX_JE_PUNKT] >= schwelle ? m.einheit[i * MAX_JE_PUNKT] : 0;
 }
+
+// Zusatzdaten für die Anatomie-Ansicht: Faserphase je Punkt (Streifen entlang der Muskelfasern), Furchen an
+// Muskelgrenzen und der Anteil des geraden Bauchmuskels (für die Sehnenzüge des Sixpacks).
+export interface Anatomie {
+  phase: Float32Array;    // Koordinate quer zur Faser in »Streifen«: sin(2π·phase) zeichnet die Fasern
+  rille: Float32Array;    // 0 = mitten im Muskel, 1 = Grenze zwischen zwei Muskeln oder Muskel und Sehne
+  rilleHaut: Float32Array; // nur Grenzen, die man bei wenig Fett durch die Haut sieht (Muskel an Muskel)
+  bauch: Float32Array;    // Gewicht des geraden Bauchmuskels
+}
+
+const FASERN_JE_METER = 75;
+
+// Faserverlauf: entlang einer Achse (Gliedmaßen, gerade Rumpfmuskeln) oder fächerförmig zu einem Ansatz
+type Verlauf = { art: 'achse'; a: V3; u: V3; radius: number } | { art: 'faecher'; z: V3; ebene: V3 };
+
+export function berechneAnatomie(netz: FormNetz, gelenke: Record<string, V3>, m: Masken, idVon: (einheit: number) => string): Anatomie {
+  const n = netz.punkte, P = netz.grund;
+  const J = (name: string): V3 => gelenke[name];
+  const schulter = J('l-shoulder'), ellbogen = J('l-elbow'), hand = J('l-hand');
+  const huefte = J('l-upper-leg'), knie = J('l-knee'), knoechel = J('l-ankle'), becken = J('pelvis');
+  const W = schulter[0], zMitte = becken[2];
+  const plus = (a: V3, b: V3, k = 1): V3 => [a[0] + k * b[0], a[1] + k * b[1], a[2] + k * b[2]];
+  const achse = (a: V3, b: V3, radius: number): Verlauf => ({ art: 'achse', a, u: norm(sub(b, a)), radius });
+  const fest = (u: V3, a: V3, radius: number): Verlauf => ({ art: 'achse', a, u: norm(u), radius });
+  const faecher = (z: V3, ebene: V3): Verlauf => ({ art: 'faecher', z, ebene: norm(ebene) });
+  const rumpf: V3 = [0, becken[1], zMitte];
+  const trochanter: V3 = [huefte[0] + 0.07, huefte[1] - 0.1, huefte[2] - 0.02];
+  const VERLAUF: Record<string, Verlauf> = {
+    delt_v: achse(schulter, ellbogen, 0.06), delt_s: achse(schulter, ellbogen, 0.06), delt_h: achse(schulter, ellbogen, 0.06),
+    bizeps: achse(schulter, ellbogen, 0.05), trizeps: achse(schulter, ellbogen, 0.05), brachialis: achse(schulter, ellbogen, 0.05),
+    brachiorad: achse(ellbogen, hand, 0.04), ua_beuger: achse(ellbogen, hand, 0.04), ua_strecker: achse(ellbogen, hand, 0.04),
+    rect_fem: achse(huefte, knie, 0.08), vast_lat: achse(huefte, knie, 0.08), vast_med: achse(huefte, knie, 0.08), hamstrings: achse(huefte, knie, 0.08),
+    adduktoren: faecher(plus(huefte, sub(knie, huefte), 0.55), [-1, 0, 0]),
+    gastro: achse(knie, knoechel, 0.055), soleus: achse(knie, knoechel, 0.055), tibialis: achse(knie, knoechel, 0.055),
+    brust_o: faecher([schulter[0], schulter[1] - 0.02, schulter[2] + 0.04], [0, 0, 1]),
+    brust_u: faecher([schulter[0], schulter[1] - 0.06, schulter[2] + 0.04], [0, 0, 1]),
+    serratus: faecher([W * 0.5, schulter[1] - 0.1, schulter[2] - 0.12], [1, 0, 0]),
+    bauch_g: fest([0, 1, 0], rumpf, 0.16), strecker: fest([0, 1, 0], rumpf, 0.16),
+    bauch_s: fest([0.6, 0.8, 0.15], rumpf, 0.15),
+    lat: faecher([W * 0.85, schulter[1] - 0.1, schulter[2] - 0.04], [0, 0, -1]),
+    trapez_o: faecher(schulter, [0, 0.4, -1]), trapez_m: fest([1, 0.25, 0], [0, schulter[1] - 0.1, zMitte], 0.12),
+    glut_max: faecher(trochanter, [0, 0, -1]), glut_med: faecher(trochanter, [1, 0, 0]),
+  };
+
+  // Mitte jedes Muskels (linke Seite, gespiegelt) als Bezug für die Fächerwinkel
+  const mitte = new Map<string, [number, number, number, number]>();
+  for (let i = 0; i < n; i++) {
+    if (m.gewicht[i * MAX_JE_PUNKT] < 0.5) continue;
+    const id = idVon(m.einheit[i * MAX_JE_PUNKT]), s = mitte.get(id) ?? [0, 0, 0, 0];
+    s[0] += Math.abs(P[3 * i]); s[1] += P[3 * i + 1]; s[2] += P[3 * i + 2]; s[3]++;
+    mitte.set(id, s);
+  }
+  const bezug = new Map<string, { e1: V3; e2: V3; r: number }>();
+  for (const [id, v] of Object.entries(VERLAUF)) {
+    const c = mitte.get(id);
+    if (v.art !== 'faecher' || !c) continue;
+    const d = sub([c[0] / c[3], c[1] / c[3], c[2] / c[3]], v.z);
+    const flach = sub(d, v.ebene.map(x => x * dot(d, v.ebene)) as V3);
+    const e1 = norm(flach);
+    bezug.set(id, { e1, e2: norm(cross(v.ebene, e1)), r: Math.hypot(...flach) });
+  }
+  // Fester Querbezug je Achse, damit der Umfangswinkel stetig bleibt
+  const quer = (u: V3): V3 => norm(Math.abs(u[2]) < 0.9 ? cross(u, [0, 0, 1]) : cross(u, [1, 0, 0]));
+
+  const phase = new Float32Array(n), rille = new Float32Array(n), bauch = new Float32Array(n);
+  const herr = new Int16Array(n);   // stärkster Anteil je Punkt (0 = Sehne/Haut)
+  for (let i = 0; i < n; i++) {
+    const x = P[3 * i], p: V3 = [Math.abs(x), P[3 * i + 1], P[3 * i + 2]];
+    const gewichte: [number, number][] = [];
+    let summe = 0;
+    for (let k = 0; k < MAX_JE_PUNKT; k++) {
+      const w = m.gewicht[i * MAX_JE_PUNKT + k];
+      if (w === 0) break;
+      const e = m.einheit[i * MAX_JE_PUNKT + k];
+      gewichte.push([e, w]); summe += w;
+      if (idVon(e) === 'bauch_g') bauch[i] += w;
+    }
+    // Faserphase des stärksten Muskels
+    const id = gewichte.length ? idVon(gewichte[0][0]) : '', v = VERLAUF[id];
+    if (v?.art === 'achse') {
+      const d = sub(p, v.a), r = sub(d, v.u.map(c => c * dot(d, v.u)) as V3);
+      const f = quer(v.u), l = cross(v.u, f);
+      const winkel = Math.atan2(dot(r, l), dot(r, f));
+      // ganzzahlige Streifenzahl rundherum: der Sprung bei ±π ändert sin(2π·phase) nicht
+      phase[i] = winkel / (2 * Math.PI) * Math.round(2 * Math.PI * v.radius * FASERN_JE_METER);
+    } else if (v?.art === 'faecher' && bezug.has(id)) {
+      const b = bezug.get(id)!, d = sub(p, v.z);
+      phase[i] = Math.atan2(dot(d, b.e2), dot(d, b.e1)) * b.r * FASERN_JE_METER;
+    }
+    herr[i] = gewichte.length && gewichte[0][1] >= 1 - summe ? gewichte[0][0] : 0;
+  }
+  // Furche = Punkte, an deren Kanten der stärkste Anteil wechselt: schmale Linie statt breiter Mischzone
+  const rilleHaut = new Float32Array(n);
+  // Köpfe desselben Muskels trennt man durch die Haut nicht (obere/untere Brust)
+  const UNSICHTBAR = new Set(['brust_o|brust_u', 'brust_u|brust_o']);
+  const sichtbar = (a: number, b: number) => a !== 0 && b !== 0 && !UNSICHTBAR.has(idVon(a) + '|' + idVon(b));
+  const d = gemeinsameDreiecke(netz);
+  for (let t = 0; t < d.length; t += 3) {
+    const ecken = [d[t], d[t + 1], d[t + 2]];
+    for (let k = 0; k < 3; k++) {
+      const a = ecken[k], b = ecken[(k + 1) % 3];
+      if (herr[a] === herr[b]) continue;
+      rille[a] = rille[b] = 1;
+      if (sichtbar(herr[a], herr[b])) rilleHaut[a] = rilleHaut[b] = 1;
+    }
+  }
+  // Weich ausblenden: einige Glättungsschritte über die Nachbarn, damit die Furche nicht den Dreieckskanten folgt
+  const nachbarn: number[][] = Array.from({ length: n }, () => []);
+  for (let t = 0; t < d.length; t += 3) for (let k = 0; k < 3; k++) {
+    const a = d[t + k], b = d[t + (k + 1) % 3];
+    nachbarn[a].push(b); nachbarn[b].push(a);
+  }
+  const glaette = (f: Float32Array, schritte: number): Float32Array => {
+    let x: Float32Array = f, y: Float32Array = new Float32Array(n);
+    for (let s = 0; s < schritte; s++) {
+      for (let i = 0; i < n; i++) {
+        const nb = nachbarn[i];
+        let m = 0;
+        for (const j of nb) m += x[j];
+        y[i] = nb.length ? 0.4 * x[i] + 0.6 * m / nb.length : x[i];
+      }
+      [x, y] = [y, x];
+    }
+    return x;
+  };
+  return { phase, rille: glaette(rille, 2), rilleHaut: glaette(rilleHaut, 3), bauch };
+}

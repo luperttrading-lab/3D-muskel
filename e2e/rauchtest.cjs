@@ -54,6 +54,9 @@ require('fs').mkdirSync(aus, { recursive: true });
   await page.getByRole('button', { name: 'Entwicklung' }).click();
   await page.waitForTimeout(2500);
   await bild('08-atlas-entwicklung');
+  await page.getByRole('button', { name: 'Anatomie' }).click();
+  await page.waitForTimeout(1500);
+  await bild('08b-atlas-anatomie');
 
   await page.getByRole('navigation').getByRole('button', { name: 'Evolution' }).click();
   await page.waitForTimeout(3000);
