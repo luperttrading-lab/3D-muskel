@@ -65,6 +65,16 @@ export function simuliere(echte: PerformedSet[], o: Optionen, jetzt: number, e: 
   return schritte;
 }
 
+// Körperfett-Ziel der Vorschau. Die Fett-Achse ω steuert MakeHumans »Gewicht«: unter 0,5 schrumpft der ganze Körperbau
+// samt Muskeln (dünn statt definiert). Die athletische Form liegt bei mittlerem Gewicht (0,5) und hoher Muskulatur –
+// »definiert« geht deshalb bis 0,5 und nicht darunter.
+export type FettZiel = 'gleich' | 'weniger' | 'definiert';
+export const OMEGA_ATHLETISCH = 0.5;
+export function simFettZiel(start: number, ziel: FettZiel): number {
+  const boden = Math.min(start, OMEGA_ATHLETISCH);
+  return ziel === 'gleich' ? start : ziel === 'weniger' ? Math.max(boden, start - (start - boden) / 2) : boden;
+}
+
 // Körperfett der Vorschau in Woche w: linear vom Start zum Ziel über den ganzen Zeitraum
 export function simFett(start: number, ziel: number, woche: number, wochen: number): number {
   return start + (ziel - start) * Math.min(1, woche / Math.max(1, wochen));
