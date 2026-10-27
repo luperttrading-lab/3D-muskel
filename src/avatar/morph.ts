@@ -17,6 +17,49 @@ export function stufen(x: number, out: Float32Array | number[] = [0, 0, 0]) {
 
 interface Kombination { m: number; g: number; d: Float32Array }
 
+// V-Form: Ein trainierter Oberkörper wird breiter (Latissimus, Schultern, Brustkorb), die Taille bleibt. MakeHumans
+// Muskelformen verbreitern den Rumpf unter der Achsel praktisch nicht; dieses Feld liefert je Punkt die Verschiebung
+// bei voller Breite (b = 1): der Rumpf wird nach Höhe gewichtet seitlich gestreckt und etwas tiefer, die Arme rücken
+// als Ganzes mit der Schulter nach außen (Armanteil aus den Knochengewichten der Haltung).
+export interface BreitenFeld { fx: Float32Array; fz: Float32Array; links: Uint8Array }
+export const BREITE_SEITLICH = 0.2, BREITE_TIEFE = 0.07;
+export function breitenFeld(netz: FormNetz, gelenke: Record<string, [number, number, number]>, haut?: Haut, knochen?: { name: string }[]): BreitenFeld {
+  const n = netz.punkte, P = netz.grund;
+  const yB = gelenke['pelvis'][1], H = gelenke['neck'][1] - yB, schulter = gelenke['l-shoulder'];
+  const glatt = (a: number, b: number, x: number) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+  // Höhenprofil: Hüfte fest, voll vom Rippenbogen bis zur Achsel, zum Hals hin auslaufend
+  const profil = (v: number) => glatt(0.15, 0.6, v) * (1 - 0.65 * glatt(0.85, 1.0, v)) * (1 - glatt(1.0, 1.06, v));
+  const tiefe = (v: number) => glatt(0.3, 0.55, v) * (1 - glatt(0.8, 0.95, v));
+  // Rumpfmitte (z) je Höhe
+  const zMitte: number[] = [];
+  for (let b = 0; b <= 24; b++) {
+    const vb = -0.1 + 0.05 * b; let lo = Infinity, hi = -Infinity;
+    for (let i = 0; i < n; i++) {
+      if (Math.abs((P[3 * i + 1] - yB) / H - vb) > 0.025 || Math.abs(P[3 * i]) > 0.6 * schulter[0]) continue;
+      lo = Math.min(lo, P[3 * i + 2]); hi = Math.max(hi, P[3 * i + 2]);
+    }
+    zMitte.push(Number.isFinite(lo) ? (lo + hi) / 2 : gelenke['pelvis'][2]);
+  }
+  const rumpfZ = (v: number) => { const q = Math.min(23.999, Math.max(0, (v + 0.1) / 0.05)), k = Math.floor(q); return zMitte[k] + (zMitte[k + 1] - zMitte[k]) * (q - k); };
+  // Armanteil je Punkt: Gewichte der Arm-Knochen (Schlüsselbein halb)
+  const armGewicht = (knochen ?? []).map(k => (k.name.startsWith('clavicle') ? 0.5 : k.name === 'rumpf' ? 0 : 1));
+  const arm = (i: number) => {
+    if (!haut || !armGewicht.length) return glatt(0.9 * schulter[0], 1.15 * schulter[0], Math.abs(P[3 * i]));
+    let a = 0;
+    for (let k = 0; k < 4; k++) a += haut.gew[4 * i + k] * (armGewicht[haut.idx[4 * i + k]] ?? 0);
+    return Math.min(1, a);
+  };
+  const vSchulter = (schulter[1] - yB) / H, armVersatz = BREITE_SEITLICH * profil(vSchulter) * schulter[0];
+  const fx = new Float32Array(n), fz = new Float32Array(n), links = new Uint8Array(n);
+  for (let i = 0; i < n; i++) {
+    const x = P[3 * i], v = (P[3 * i + 1] - yB) / H, a = arm(i), s = x >= 0 ? 1 : -1;
+    links[i] = x >= 0 ? 1 : 0;
+    fx[i] = (1 - a) * BREITE_SEITLICH * profil(v) * x + a * s * armVersatz;
+    fz[i] = (1 - a) * BREITE_TIEFE * tiefe(v) * (P[3 * i + 2] - rumpfZ(v));
+  }
+  return { fx, fz, links };
+}
+
 export class Verformer {
   readonly netz: FormNetz;
   readonly ruhe: Float32Array;         // gemeinsame Punkte in der Ruhehaltung (A-Pose), nach der Muskelverformung
@@ -43,6 +86,9 @@ export class Verformer {
   }
 
   private pose: { haut: Haut; matrizen: Float32Array } | null = null;
+  private breite: { feld: BreitenFeld; L: number; R: number } | null = null;
+  // V-Form je Seite (0 = Startbreite, 1 = volle Breite); wirkt beim nächsten verforme()
+  setzeBreite(feld: BreitenFeld | null, L = 0, R = 0) { this.breite = feld && (L > 0 || R > 0) ? { feld, L, R } : null; }
   // Haltung setzen (null = A-Pose); wirkt beim nächsten verforme()
   setzePose(haut: Haut | undefined, matrizen: Float32Array | null) { this.pose = haut && matrizen ? { haut, matrizen } : null; }
   // beliebige Ruhepositionen (punkte × 3) in die aktuelle Haltung bringen
@@ -72,6 +118,10 @@ export class Verformer {
         const c = kombi[k], w = a[c.m] * b[c.g] + (getrennt ? a0[c.m] * db[c.g] : 0);
         if (w === 0) continue;
         x += w * c.d[3 * i]; y += w * c.d[3 * i + 1]; z += w * c.d[3 * i + 2];
+      }
+      if (this.breite) {
+        const { feld, L, R } = this.breite, bs = feld.links[i] ? L : R;
+        x += bs * feld.fx[i]; z += bs * feld.fz[i];
       }
       pos[3 * i] = x; pos[3 * i + 1] = y; pos[3 * i + 2] = z;
     }
