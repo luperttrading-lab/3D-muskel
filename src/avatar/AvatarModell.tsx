@@ -1,7 +1,7 @@
 // Der verformbare 3D-Körper mit Haut, Augen, Brauen, Wimpern und Haaren.
 // Zielwerte (Muskulatur je Einheit, Glühen) kommen als Props; die Anzeige gleitet weich dorthin, damit jeder
 // Satz als sichtbares Anschwellen der beanspruchten Muskeln erscheint.
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useFrame, useLoader, useThree, type ThreeEvent } from '@react-three/fiber';
 import * as THREE from 'three';
 import type { Begleiter, KoerperDaten } from './daten';
@@ -9,6 +9,7 @@ import { berechneAnatomie, berechneMasken, hauptEinheit, MAX_JE_PUNKT, type Mask
 import { Verformer, muskelProPunkt } from './morph';
 import { poseMatrizen } from './pose';
 import { EINHEITEN, einheitIndex, SEITEN } from '../engine/muskeln';
+import { atlasFarbe } from '../ui/farben';
 
 export type Darstellung = 'haut' | 'entwicklung' | 'atlas';
 
@@ -52,7 +53,9 @@ float linie(float y, float m, float b) { return 1.0 - smoothstep(0.0, b, abs(y -
 
 const KLEID_GLSL = /* glsl */`
 uniform float uFrau, uFarbAnteil, uHoseOben, uHoseUnten, uBhOben, uBhUnten, uRumpfX, uTraegerX;
-uniform float uAnatomie;
+uniform float uAnatomie, uKarteAn, uAtlasLum;
+uniform sampler2D uAnatKarte, uAnatFarbe, uAnatHoehe, uEinheiten;
+uniform vec3 uAtlasRef;
 uniform vec3 uKleid, uAkzent, uAkzentAnatomie, uRestFarbe, uBauchY;
 varying vec3 vLokal;
 varying vec3 vFarbe;
@@ -73,6 +76,10 @@ varying vec4 vKlasseA, vKlasseB;
 float fenster(float x, float a, float b, float w) { return smoothstep(a - w, a + w, x) * (1.0 - smoothstep(b - w, b + w, x)); }
 `;
 
+const LEER = new THREE.DataTexture(new Uint8Array([0, 0, 0, 255]), 1, 1);
+LEER.needsUpdate = true;
+const ATLAS_REF = (() => { const [r, g, b] = atlasFarbe(0.5); return new THREE.Vector3(r, g, b); })();
+
 function kleidMaterial(map: THREE.Texture, akzent: THREE.Color, gelenke: KoerperDaten['gelenke'], frau: boolean) {
   const mat = new THREE.MeshPhysicalMaterial({
     map, roughness: 0.58, metalness: 0, sheen: 0.35, sheenRoughness: 0.75, sheenColor: new THREE.Color('#ffd9c7'),
@@ -91,6 +98,13 @@ function kleidMaterial(map: THREE.Texture, akzent: THREE.Color, gelenke: Koerper
     uKleid: { value: new THREE.Color('#1b1f2a') },
     uAkzent: { value: akzent },
     uAnatomie: { value: 0 },
+    uKarteAn: { value: 0 },
+    uAnatKarte: { value: LEER as THREE.Texture },
+    uAnatFarbe: { value: LEER as THREE.Texture },
+    uAnatHoehe: { value: LEER as THREE.Texture },
+    uEinheiten: { value: LEER as THREE.Texture },
+    uAtlasRef: { value: ATLAS_REF },
+    uAtlasLum: { value: 0.17 },   // Luminanz der gemalten Muskelfarbe (linear)
     uAkzentAnatomie: { value: akzent.clone().lerp(new THREE.Color('#ffffff'), 0.1) },
     uRestFarbe: { value: new THREE.Color(0.8, 0.75, 0.7) },
     // Sehnenzüge des Sixpacks: Nabelhöhe und zwei darüber (Anteile der Rumpfhöhe Becken → Hals)
@@ -115,6 +129,7 @@ function kleidMaterial(map: THREE.Texture, akzent: THREE.Color, gelenke: Koerper
         vec3 farbe = mix(uRestFarbe, vFarbe, decke);
         vec3 hautFarbe = diffuseColor.rgb;
         diffuseColor.rgb = mix(diffuseColor.rgb, uKleid, kleid * (1.0 - uFarbAnteil));
+        vec3 nachKleid = diffuseColor.rgb;
         diffuseColor.rgb = mix(diffuseColor.rgb, farbe * (1.0 - 0.4 * kleid * (1.0 - uAnatomie)), uFarbAnteil);   // Kleidung bleibt als dunklere Zone erkennbar
         // Anatomie: Muskelfasern, Furchen zwischen Muskeln, Sehnenzüge des geraden Bauchmuskels
         float aa = 1.0 - smoothstep(0.1, 0.3, fwidth(vPhase));
@@ -147,7 +162,24 @@ function kleidMaterial(map: THREE.Texture, akzent: THREE.Color, gelenke: Koerper
         diffuseColor.rgb = mix(diffuseColor.rgb, faszienFarbe, uAnatomie * max(max(0.8 * faszie, 0.75 * sixpackKern), 0.7 * zacken));   // Faszien zwischen den Muskeln
         diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.70, 0.62, 0.64), uAnatomie * (1.0 - decke) * 0.6);   // Sehnenplatten gedämpft, damit Maskenlücken nicht grell wirken
         // Kopf, Hände und Füße bleiben in der Anatomie-Ansicht Haut
-        diffuseColor.rgb = mix(diffuseColor.rgb, hautFarbe, uAnatomie * vHautZone * (1.0 - decke));`)
+        diffuseColor.rgb = mix(diffuseColor.rgb, hautFarbe, uAnatomie * vHautZone * (1.0 - decke));
+        // Texturpaket (sobald geladen): gemalte Anatomie, pixelgenaue Einheiten, Relief – ersetzt das Prozedurale
+        if (uKarteAn > 0.5) {
+          vec4 kt = texture2D(uAnatKarte, vMapUv);
+          float id = floor(kt.r * 255.0 + 0.5);
+          vec4 ec = texture2D(uEinheiten, vec2((id + 0.5) / 128.0, 0.25));   // Farbe der Einheit (Entwicklung bzw. Atlas)
+          vec4 ez = texture2D(uEinheiten, vec2((id + 0.5) / 128.0, 0.75));   // r = gewählt
+          vec3 gemalt = texture2D(uAnatFarbe, vMapUv).rgb;
+          float lum = dot(gemalt, vec3(0.2126, 0.7152, 0.0722));
+          vec3 anat = gemalt * mix(vec3(1.0), ec.rgb / uAtlasRef, kt.g * 0.85);
+          anat = mix(anat, uAkzentAnatomie * min(0.45 + 0.9 * lum / uAtlasLum, 1.3), ez.r * 0.72);
+          vec3 entw = (id > 0.5 ? ec.rgb : uRestFarbe) * (0.6 + 0.4 * min(lum / uAtlasLum, 1.5));
+          vec3 tex = mix(entw, anat, uAnatomie);
+          tex = mix(tex, hautFarbe, kt.b * step(id, 0.5) * uAnatomie);
+          diffuseColor.rgb = mix(nachKleid, tex, uFarbAnteil);
+          float hoeheTex = (texture2D(uAnatHoehe, vMapUv).r - 0.5) * 0.012;
+          hoehe = (uAnatomie + 0.35 * (uFarbAnteil - uAnatomie)) * hoeheTex - (1.0 - uFarbAnteil) * hautTiefe;
+        }`)
       .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
         normal = relief(-vViewPosition, normal, hoehe);`)
       .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
@@ -273,6 +305,52 @@ export function AvatarModell({ daten, zustand, darstellung, auswahl, hautton, ak
     attr.stat1.needsUpdate = attr.stat2.needsUpdate = attr.klasseA.needsUpdate = attr.klasseB.needsUpdate = true;
   }, [masken, daten, attr, onMasken, verformer, pose, poseM]);
 
+  // Anatomie-Texturpaket: wird erst geladen, wenn Entwicklung oder Anatomie gezeigt werden
+  const einheitenTex = useMemo(() => {
+    const t = new THREE.DataTexture(new Uint8Array(128 * 2 * 4), 128, 2);
+    t.magFilter = t.minFilter = THREE.NearestFilter;
+    t.needsUpdate = true;
+    return t;
+  }, []);
+  useEffect(() => { uniforms.uEinheiten.value = einheitenTex; }, [uniforms, einheitenTex]);
+  const karteIds = useRef<{ n: number; id: Uint8Array } | null>(null);
+  const [paketGewollt, setPaketGewollt] = useState(false);
+  useEffect(() => { if (darstellung !== 'haut') setPaketGewollt(true); }, [darstellung]);
+  useEffect(() => {
+    if (!paketGewollt) return;
+    let ab = false;
+    const pfad = (k: string) => `${basis}modelle/anatomie-${daten.geschlecht}-${k}`;
+    const tl = new THREE.TextureLoader(), il = new THREE.ImageLoader();
+    const laden = <T,>(f: (ok: (x: T) => void, fehler: (e: unknown) => void) => void) => new Promise<T>((ok, fehler) => f(ok, fehler));
+    Promise.all([
+      laden<THREE.Texture>((ok, f) => tl.load(pfad('farbe.jpg'), ok, undefined, f)),
+      laden<THREE.Texture>((ok, f) => tl.load(pfad('hoehe.jpg'), ok, undefined, f)),
+      laden<HTMLImageElement>((ok, f) => il.load(pfad('karte.png'), ok, undefined, f)),
+    ]).then(([farbeT, hoeheT, karteBild]) => {
+      if (ab) return;
+      farbeT.colorSpace = THREE.SRGBColorSpace; farbeT.anisotropy = 8;
+      hoeheT.colorSpace = THREE.NoColorSpace;
+      const karteT = new THREE.Texture(karteBild);
+      karteT.colorSpace = THREE.NoColorSpace;
+      karteT.magFilter = karteT.minFilter = THREE.NearestFilter;   // Einheiten dürfen nicht gemischt werden
+      karteT.generateMipmaps = false;
+      for (const t of [farbeT, hoeheT, karteT]) { t.flipY = true; t.needsUpdate = true; }
+      // Einheit je Pixel auch auf der CPU, damit Antippen genau den gezeichneten Muskel trifft
+      const c = document.createElement('canvas');
+      c.width = karteBild.width; c.height = karteBild.height;
+      const ctx = c.getContext('2d', { willReadFrequently: true });
+      if (ctx) {
+        ctx.drawImage(karteBild, 0, 0);
+        const roh = ctx.getImageData(0, 0, c.width, c.height).data, id = new Uint8Array(c.width * c.height);
+        for (let i = 0; i < id.length; i++) id[i] = roh[4 * i];
+        karteIds.current = { n: c.width, id };
+      }
+      uniforms.uAnatFarbe.value = farbeT; uniforms.uAnatHoehe.value = hoeheT; uniforms.uAnatKarte.value = karteT; uniforms.uKarteAn.value = 1;
+      dirty.current = true; invalidate();
+    }).catch(() => { /* ohne Paket bleibt die prozedurale Anatomie */ });
+    return () => { ab = true; };
+  }, [paketGewollt, basis, daten.geschlecht, uniforms, invalidate]);
+
   // Anzeige-Zustand gleitet auf die Zielwerte zu
   const n = zustand.mu.length;
   const anzeige = useRef<{ mu: Float32Array; omega: number; muRest: number } | null>(null);
@@ -310,6 +388,12 @@ export function AvatarModell({ daten, zustand, darstellung, auswahl, hautton, ak
       Dy[4 * j] = glu; Dy[4 * j + 1] = aus; Dy[4 * j + 2] = glatt(0.5, 1.25, muPunkt(q[j])) * fett;
     }
     uniforms.uRestFarbe.value.setRGB(farbe[0], farbe[1], farbe[2]);
+    const ED = einheitenTex.image.data as Uint8Array;
+    for (let e = 0; e < Math.min(128, farbe.length / 3); e++) {
+      ED[4 * e] = Math.round(255 * Math.min(1, farbe[3 * e])); ED[4 * e + 1] = Math.round(255 * Math.min(1, farbe[3 * e + 1])); ED[4 * e + 2] = Math.round(255 * Math.min(1, farbe[3 * e + 2])); ED[4 * e + 3] = 255;
+      ED[512 + 4 * e] = auswahlMenge.has(e) ? 255 : 0; ED[512 + 4 * e + 1] = Math.round(255 * Math.min(1, gl[e] ?? 0));
+    }
+    einheitenTex.needsUpdate = true;
     geo.attributes.position.needsUpdate = true;
     geo.attributes.normal.needsUpdate = true;
     attr.farbe.needsUpdate = attr.dyn.needsUpdate = true;
@@ -341,7 +425,7 @@ export function AvatarModell({ daten, zustand, darstellung, auswahl, hautton, ak
     const az = darstellung === 'atlas' ? 1 : 0, ad = az - anatAnteil.current;
     if (Math.abs(ad) > 0.002) { anatAnteil.current += ad * (bewegung ? Math.min(1, dt * 8) : 1); aktiv = true; } else anatAnteil.current = az;
     uniforms.uAnatomie.value = anatAnteil.current;
-    mat.roughness = 0.58 - 0.26 * anatAnteil.current;   // Muskelgewebe glänzt feucht
+    mat.roughness = 0.58 - 0.16 * anatAnteil.current;   // Muskelgewebe glänzt leicht feucht
     mat.sheen = 0.02 + 0.33 * (1 - farbAnteil.current);   // Haut-Glanz würde die Farbskalen auswaschen
     if (aktiv || glueht || dirty.current) {
       aktualisiere(a.mu, a.muRest, a.omega);
@@ -353,6 +437,12 @@ export function AvatarModell({ daten, zustand, darstellung, auswahl, hautton, ak
   const tippen = (e: ThreeEvent<MouseEvent>) => {
     if (!onWahl || !e.face) return;
     e.stopPropagation();
+    const k = karteIds.current;
+    if (k && e.uv) {
+      const px = Math.min(k.n - 1, Math.max(0, Math.floor(e.uv.x * k.n))), py = Math.min(k.n - 1, Math.max(0, Math.floor((1 - e.uv.y) * k.n)));
+      const id = k.id[py * k.n + px];
+      if (id) { onWahl(id); return; }
+    }
     const q = daten.koerper.quelle, ecken = [e.face.a, e.face.b, e.face.c], p = verformer.posUV;
     const lokal = e.object.worldToLocal(e.point.clone());
     let beste = ecken[0], d = Infinity;
