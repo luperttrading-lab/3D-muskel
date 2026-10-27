@@ -92,6 +92,7 @@ interface BuehneProps {
   ladeAnzeige?: ReactNode;
   onDaneben?: () => void;
   bildVersatz?: number;    // Figur um so viele CSS-Pixel nach rechts schieben (Platz für Bedienelemente links)
+  schatten?: boolean;      // Schattenwurf des Hauptlichts (Standard: an)
 }
 
 // Verschiebt die Bildmitte, ohne die Drehachse zu ändern: von vorn und hinten bleibt die Figur gleich versetzt
@@ -106,7 +107,7 @@ function BildVersatz({ px }: { px: number }) {
   return null;
 }
 
-export function Buehne({ children, groesse, akzent, ziel, startAzimut = 0.35, abstand, onFehler, bewegung = true, className, ladeAnzeige, onDaneben, bildVersatz = 0 }: BuehneProps) {
+export function Buehne({ children, groesse, akzent, ziel, startAzimut = 0.35, abstand, onFehler, bewegung = true, className, ladeAnzeige, onDaneben, bildVersatz = 0, schatten = true }: BuehneProps) {
   const steuerung = useRef<OrbitControlsImpl>(null);
   const mitte = useMemo(() => new THREE.Vector3(0, groesse * 0.53, -0.11), [groesse]);
   const d = abstand ?? groesse * 2.25;
@@ -114,6 +115,7 @@ export function Buehne({ children, groesse, akzent, ziel, startAzimut = 0.35, ab
   return (
     <Canvas
       className={className}
+      shadows={schatten ? { type: THREE.PCFShadowMap } : false}
       dpr={[1, 2]}
       frameloop="demand"
       onPointerMissed={onDaneben}
@@ -127,13 +129,20 @@ export function Buehne({ children, groesse, akzent, ziel, startAzimut = 0.35, ab
     >
       <Umgebung />
       <hemisphereLight args={['#c9d8ff', '#1a1410', 0.4]} />
-      <directionalLight position={[2.4, 3.0, 1.8]} intensity={2.6} color="#fff1e4" />
+      {/* Hauptlicht wirft weiche Schatten: Brust auf Bauch, Kinn auf Hals, Arme auf die Rumpfseiten, Figur auf den Boden */}
+      <directionalLight position={[2.4, 3.0, 1.8]} intensity={2.6} color="#fff1e4" castShadow
+        shadow-mapSize={[2048, 2048]} shadow-bias={-0.0006} shadow-normalBias={0.04} shadow-radius={6} shadow-intensity={0.7}
+        shadow-camera-left={-1.3} shadow-camera-right={1.3} shadow-camera-top={1.3} shadow-camera-bottom={-1.3} shadow-camera-near={0.5} shadow-camera-far={9} />
       <directionalLight position={[-2.6, 1.2, 1.4]} intensity={0.45} color="#9db9ff" />
       <directionalLight position={[0, 2.2, -3]} intensity={0.5} color="#b8c8ff" />
       <Suspense fallback={ladeAnzeige ?? null}>
         {children}
       </Suspense>
       <Boden akzent={akzent} />
+      <mesh rotation-x={-Math.PI / 2} position={[0, 0.001, 0]} receiveShadow raycast={() => null}>
+        <planeGeometry args={[4, 4]} />
+        <shadowMaterial transparent opacity={0.3} depthWrite={false} />
+      </mesh>
       <OrbitControls ref={steuerung} target={mitte} enablePan={false} minDistance={0.7} maxDistance={6.5}
         minPolarAngle={0.35} maxPolarAngle={1.75} enableDamping={bewegung} dampingFactor={0.12} rotateSpeed={0.7} zoomSpeed={0.8} />
       <Fuehrung ziel={ziel} mitte={mitte} steuerung={steuerung} />

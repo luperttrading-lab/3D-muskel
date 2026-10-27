@@ -33,6 +33,7 @@ interface Props {
   position?: [number, number, number];
   basis?: string;
   pose?: boolean;            // lockere Haltung statt A-Pose (Standard: an)
+  aoStaerke?: number;        // Stärke der gebackenen Umgebungsverdeckung (0 = aus)
   onWahl?: (einheit: number) => void;
   onMasken?: (m: Masken, mitten: Map<number, [number, number, number]>) => void;
   onMorphMs?: (ms: number) => void;
@@ -53,7 +54,7 @@ float linie(float y, float m, float b) { return 1.0 - smoothstep(0.0, b, abs(y -
 
 const KLEID_GLSL = /* glsl */`
 uniform float uFrau, uFarbAnteil, uHoseOben, uHoseUnten, uBhOben, uBhUnten, uRumpfX, uTraegerX;
-uniform float uAnatomie, uKarteAn, uAtlasLum;
+uniform float uAnatomie, uKarteAn, uAtlasLum, uAOStaerke;
 uniform sampler2D uAnatKarte, uAnatFarbe, uAnatHoehe, uEinheiten;
 uniform vec3 uAtlasRef;
 uniform vec3 uKleid, uAkzent, uAkzentAnatomie, uRestFarbe, uBauchY;
@@ -62,6 +63,7 @@ varying vec3 vFarbe;
 // Einzelwerte in vec4 gebündelt: WebGL garantiert nur 16 Vertex-Attribute (iPhone: genau 16)
 varying vec4 vDyn, vStat1, vStat2;
 varying vec4 vKlasseA, vKlasseB;
+varying float vAO;   // gebackene Umgebungsverdeckung (1 = frei)
 #define vGluehen vDyn.x
 #define vAuswahl vDyn.y
 #define vDef vDyn.z
@@ -99,6 +101,7 @@ function kleidMaterial(map: THREE.Texture, akzent: THREE.Color, gelenke: Koerper
     uKleid: { value: new THREE.Color('#1b1f2a') },
     uAkzent: { value: akzent },
     uAnatomie: { value: 0 },
+    uAOStaerke: { value: 0.85 },
     uKarteAn: { value: 0 },
     uAnatKarte: { value: LEER as THREE.Texture },
     uAnatFarbe: { value: LEER as THREE.Texture },
@@ -114,9 +117,9 @@ function kleidMaterial(map: THREE.Texture, akzent: THREE.Color, gelenke: Koerper
   mat.onBeforeCompile = (s) => {
     Object.assign(s.uniforms, uniforms);
     s.vertexShader = s.vertexShader
-      .replace('#include <common>', `#include <common>\n${KLEID_GLSL}\nattribute vec3 aFarbe;\nattribute vec4 aDyn, aStat1, aStat2, aKlasseA, aKlasseB;`)
+      .replace('#include <common>', `#include <common>\n${KLEID_GLSL}\nattribute vec3 aFarbe;\nattribute vec4 aDyn, aStat1, aStat2, aKlasseA, aKlasseB;\nattribute float aAO;`)
       .replace('#include <begin_vertex>', `#include <begin_vertex>
-        vLokal = position; vFarbe = aFarbe; vDyn = aDyn; vStat1 = aStat1; vStat2 = aStat2; vKlasseA = aKlasseA; vKlasseB = aKlasseB;`);
+        vLokal = position; vFarbe = aFarbe; vDyn = aDyn; vStat1 = aStat1; vStat2 = aStat2; vKlasseA = aKlasseA; vKlasseB = aKlasseB; vAO = aAO;`);
     s.fragmentShader = s.fragmentShader
       .replace('#include <common>', `#include <common>\n${KLEID_GLSL}${RELIEF_GLSL}`)
       .replace('#include <map_fragment>', `#include <map_fragment>
@@ -191,6 +194,12 @@ function kleidMaterial(map: THREE.Texture, akzent: THREE.Color, gelenke: Koerper
       .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
         normal = relief(-vViewPosition, normal, hoehe);`)
       .replace('#include <lights_fragment_end>', `#include <lights_fragment_end>
+        // Umgebungsverdeckung: Achseln, Schritt, Kinn, Kniekehlen bekommen weniger Umgebungs- und etwas weniger Direktlicht
+        float ao = mix(1.0, vAO, uAOStaerke);
+        reflectedLight.indirectDiffuse *= ao;
+        reflectedLight.indirectSpecular *= ao * ao;
+        reflectedLight.directDiffuse *= mix(1.0, ao, 0.5);
+        reflectedLight.directSpecular *= ao;
         // Furchen fangen kein Glanzlicht (sonst farbige Säume vom Fülllicht)
         reflectedLight.directSpecular *= 1.0 - 0.85 * hoehle;
         reflectedLight.indirectSpecular *= 1.0 - 0.7 * hoehle;
@@ -238,7 +247,7 @@ function BegleitNetz({ b, muRest, omega, basis }: { b: Begleiter; muRest: number
 
 const ARM_IDS = ['bizeps', 'trizeps', 'brachialis', 'brachiorad', 'ua_beuger', 'ua_strecker', 'delt_v', 'delt_s', 'delt_h'];
 
-export function AvatarModell({ daten, zustand, darstellung, auswahl, hautton, akzent, gluehStart, bewegung, position, basis = import.meta.env.BASE_URL, pose = true, onWahl, onMasken, onMorphMs }: Props) {
+export function AvatarModell({ daten, zustand, darstellung, auswahl, hautton, akzent, gluehStart, bewegung, position, basis = import.meta.env.BASE_URL, pose = true, aoStaerke = 0.85, onWahl, onMasken, onMorphMs }: Props) {
   const invalidate = useThree(s => s.invalidate);
   const verformer = useMemo(() => new Verformer(daten.koerper), [daten]);
   // Haltung: Arme locker seitlich (Skelett und Gewichte aus MakeHuman); gilt ab der nächsten Verformung
@@ -256,6 +265,7 @@ export function AvatarModell({ daten, zustand, darstellung, auswahl, hautton, ak
     stat2: new THREE.BufferAttribute(new Float32Array(nUV * 4), 4),   // Sägemuskel, Muskelfläche, Hautzone, Arm
     klasseA: new THREE.BufferAttribute(new Float32Array(nUV * 4), 4),
     klasseB: new THREE.BufferAttribute(new Float32Array(nUV * 4), 4),
+    ao: new THREE.BufferAttribute(new Float32Array(nUV).fill(1), 1),
   }), [nUV]);
   const geo = useMemo(() => {
     const g = new THREE.BufferGeometry();
@@ -268,6 +278,7 @@ export function AvatarModell({ daten, zustand, darstellung, auswahl, hautton, ak
     g.setAttribute('aStat2', attr.stat2);
     g.setAttribute('aKlasseA', attr.klasseA);
     g.setAttribute('aKlasseB', attr.klasseB);
+    g.setAttribute('aAO', attr.ao);
     g.setIndex(new THREE.BufferAttribute(daten.koerper.dreiecke, 1));
     return g;
   }, [verformer, daten, attr]);
@@ -322,7 +333,8 @@ export function AvatarModell({ daten, zustand, darstellung, auswahl, hautton, ak
       for (let k = 0; k < MAX_JE_PUNKT; k++) summe += masken.gewicht[i * MAX_JE_PUNKT + k];
       S2[4 * j + 1] = Math.min(1, summe);
     }
-    attr.stat1.needsUpdate = attr.stat2.needsUpdate = attr.klasseA.needsUpdate = attr.klasseB.needsUpdate = true;
+    if (daten.ao) for (let j = 0; j < q.length; j++) attr.ao.array[j] = daten.ao[q[j]] / 255;
+    attr.stat1.needsUpdate = attr.stat2.needsUpdate = attr.klasseA.needsUpdate = attr.klasseB.needsUpdate = attr.ao.needsUpdate = true;
   }, [masken, daten, attr, onMasken, verformer, pose, poseM]);
 
   // Anatomie-Texturpaket: wird erst geladen, wenn Entwicklung oder Anatomie gezeigt werden
@@ -446,6 +458,7 @@ export function AvatarModell({ daten, zustand, darstellung, auswahl, hautton, ak
     if (Math.abs(ad) > 0.002) { anatAnteil.current += ad * (bewegung ? Math.min(1, dt * 8) : 1); aktiv = true; } else anatAnteil.current = az;
     uniforms.uAnatomie.value = anatAnteil.current;
     mat.roughness = 0.58 - 0.16 * anatAnteil.current;   // Muskelgewebe glänzt leicht feucht
+    uniforms.uAOStaerke.value = aoStaerke;
     mat.clearcoat = 0.001 + 0.08 * anatAnteil.current;     // im Shader nur auf Muskelgewebe
     mat.sheen = 0.02 + 0.33 * (1 - farbAnteil.current);   // Haut-Glanz würde die Farbskalen auswaschen
     if (aktiv || glueht || dirty.current) {
@@ -477,7 +490,7 @@ export function AvatarModell({ daten, zustand, darstellung, auswahl, hautton, ak
   const muRest = anzeige.current?.muRest ?? zustand.muRest, omega = anzeige.current?.omega ?? zustand.omega;
   return (
     <group position={position}>
-      <mesh geometry={geo} material={mat} onClick={tippen} />
+      <mesh geometry={geo} material={mat} onClick={tippen} castShadow receiveShadow />
       {daten.begleiter.map(b => <BegleitNetz key={b.name} b={b} muRest={Math.round(muRest * 50) / 50} omega={Math.round(omega * 50) / 50} basis={basis} />)}
     </group>
   );

@@ -1,7 +1,7 @@
 {
   "name": "muscleatlas-3d",
   "private": true,
-  "version": "0.8.1",
+  "version": "0.9.0",
   "type": "module",
   "scripts": {
     "dev": "vite --host",
@@ -9,7 +9,8 @@
     "preview": "vite preview --host",
     "test": "vitest run",
     "assets": "node tools/mh-export.mjs $MH_DATA $MH_SYSTEM public/modelle && python3 tools/mh-texturen.py $MH_SYSTEM public/modelle",
-    "anatomie": "node tools/anatomie-backen.mjs 2048"
+    "anatomie": "node tools/anatomie-backen.mjs 2048",
+    "ao": "node tools/ao-backen.mjs"
   },
   "dependencies": {
     "@react-three/drei": "10.7.9",

@@ -124,6 +124,18 @@ An den Gliedmaßen folgt der Faserverlauf dem Muskelbau: Spindel (Bizeps, Untera
 (Deltamuskel), gefiedert (gerader Quadrizeps mit Mittelsehne, seitlicher und innerer Quadrizeps, Wade). Muskelgewebe bekommt im
 Shader einen feuchten Glanz, Sehnen bleiben seidenmatt.
 
+### Licht, Schatten und Umgebungsverdeckung
+
+Das Hauptlicht wirft weiche Schatten (PCF-Schattenkarte, 2048², Vogel-Abtastung): Arme auf die Rumpfseiten, Kinn auf den
+Hals, die Figur auf den Boden. Dazu kommt eine je Körperpunkt vorab berechnete Umgebungsverdeckung
+(`public/modelle/ao-{m,w}.bin`, 1 Byte je Punkt): Achseln, Schritt, Kniekehlen und Armunterseiten bekommen weniger Umgebungslicht. Neu berechnen:
+
+```sh
+npm run ao           # tools/ao-backen.mjs, etwa 15 s je Geschlecht (96 Strahlen je Punkt, 25 cm Reichweite)
+```
+
+Im Labor lassen sich beide zum Vergleich abschalten: `#labor?...&ao=0&schatten=0`.
+
 ## Lizenz der Körpermodelle
 
 Basisnetz, Targets, Skelett mit Gewichten, Proxies und System-Assets stammen von [MakeHuman](https://static.makehumancommunity.org/makehuman/faq/are_makehuman_files_free.html)
