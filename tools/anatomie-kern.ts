@@ -129,6 +129,43 @@ export function backe(g: 'm' | 'w', N = 2048): Ergebnis {
     const q = (0.08 - v) / 0.4;
     return q >= 0 && q <= 1 && Math.abs(w - (1.1 + 0.3 * q)) < 0.3 * Math.sqrt(1 - q * q);
   };
+  // ---- Seitliche Brustwand: Sägemuskel und äußerer schräger Bauchmuskel verzahnt ----
+  // Umfangswinkel phi um die Rumpfmitte (0 vorn, π/2 seitlich, π hinten); X = phi·R und Y = v·Rumpfhöhe als Meter-Ebene.
+  // Die Verzahnungslinie läuft vom Unterrand des Brustmuskels (vorn oben) schräg nach hinten unten zum Latissimus.
+  // Darüber/dahinter der Sägemuskel als Finger, die schräg nach hinten oben unter den Lat ziehen; darunter/davor die
+  // spitzen Ursprungszacken des äußeren schrägen Bauchmuskels, dessen Fasern steil nach vorn unten laufen.
+  const zMitteV: number[] = [];
+  for (let b = 0; b <= 24; b++) {
+    const vb = -0.1 + 0.05 * b; let lo = Infinity, hi = -Infinity;
+    for (let i = 0; i < netz.punkte; i++) {
+      if (Math.abs((P[3 * i + 1] - yB) / hoeheRumpf - vb) > 0.025 || Math.abs(P[3 * i]) > 0.6 * W) continue;
+      lo = Math.min(lo, P[3 * i + 2]); hi = Math.max(hi, P[3 * i + 2]);
+    }
+    zMitteV.push(Number.isFinite(lo) ? (lo + hi) / 2 : becken[2]);
+  }
+  const rumpfZ = (v: number) => { const q = Math.min(23.999, Math.max(0, (v + 0.1) / 0.05)), k = Math.floor(q); return mischen(zMitteV[k], zMitteV[k + 1], q - k); };
+  const R_SEITE = 0.14, SA: [number, number] = [0.86 * R_SEITE, 0.67 * hoeheRumpf], SB: [number, number] = [1.68 * R_SEITE, 0.37 * hoeheRumpf];
+  const SL = Math.hypot(SB[0] - SA[0], SB[1] - SA[1]), slx = (SB[0] - SA[0]) / SL, sly = (SB[1] - SA[1]) / SL;
+  const ZACKE = SL / 5, ZACKE_TIEFE = 0.026;
+  const phiLat = (v: number) => 1.55 + 0.2 * Math.min(1, Math.max(0, (v - 0.18) / 0.5));   // Vorderrand des Latissimus
+  const seitenLage = (p: V3, v: number) => {
+    const phi = Math.atan2(p[0], p[2] - rumpfZ(v)), X = phi * R_SEITE, Y = v * hoeheRumpf;
+    const dx = X - SA[0], dy = Y - SA[1];
+    const sl = dx * slx + dy * sly, tq = -dx * sly + dy * slx;   // entlang der Linie, quer (positiv = hinten oben)
+    const q = sl / ZACKE, f = q - Math.floor(q);
+    // Fingerkuppen des Sägemuskels rund (f = 0,5), Zacken des Bauchmuskels spitz dazwischen (f = 0)
+    const grenze = ZACKE_TIEFE * (0.3 - Math.max(0, 1 - (2 * f - 1) ** 2) ** 0.7);
+    return { phi, X, Y, sl, tq, q, saege: tq > grenze && sl > -0.2 * ZACKE && sl < SL + 0.2 * ZACKE };
+  };
+  const SEITE = new Set(['serratus', 'bauch_s', 'lat', 'brust_u', 'brust_o']);
+  // −1 = nicht zuständig (vorn am Sixpack, hinten am Rücken, Achsel und Becken)
+  function seitenEinheit(p: V3, v: number, s: 'L' | 'R'): number {
+    if (v < 0.18 || v > 0.75) return -1;
+    const L = seitenLage(p, v);
+    if (L.phi < 0.55 || L.phi > phiLat(v) + 0.3) return -1;
+    if (L.phi >= phiLat(v)) return v < 0.72 ? ix('lat', s) : -1;
+    return ix(L.saege ? 'serratus' : 'bauch_s', s);
+  }
   const imSartorius = (w: number, t: number) => t > -0.14 && t < 0.97 && Math.abs(w - (0.55 - 2.5 * t)) < 0.2 * glatt(-0.14, -0.06, t);
   function oberschenkelEinheit(t: number, w: number, s: 'L' | 'R'): number {
     if (imSartorius(w, t)) return ix('sartorius', s);
@@ -181,7 +218,8 @@ export function backe(g: 'm' | 'w', N = 2048): Ergebnis {
       if (id === 'brust_o' || id === 'brust_u') {
         if (v >= oben) return u > 0.18 ? ix('trapez_o', s) : 0;
         if (u <= 0.022) return 0;
-        return ix(u > 0.58 && v > 0.45 ? 'serratus' : u < uRect(v) ? 'bauch_g' : 'bauch_s', s);
+        if (u >= uRect(v)) { const se = seitenEinheit(p, v, s); if (se >= 0) return se; }
+        return ix(u < uRect(v) ? 'bauch_g' : 'bauch_s', s);
       }
     }
     if ((id === 'bauch_g' || id === 'bauch_s' || (id === '' && u > 0.03 && v < 0.53 + 0.22 * Math.pow(Math.min(1, u), 1.6))) && nz > -0.05 && u < 0.6 && v >= 0.45)
@@ -191,6 +229,10 @@ export function backe(g: 'm' | 'w', N = 2048): Ergebnis {
     if (UNTEN.has(id) && v < 0.45 && u < 1.4) {
       const b = beckenEinheit(id, p, nz, u, v, s);
       if (b >= 0) return b;
+    }
+    if (SEITE.has(id) && u >= uRect(v)) {
+      const se = seitenEinheit(p, v, s);
+      if (se >= 0) return se;
     }
     // Rücken: Trapez als Raute bis zum 12. Brustwirbel, darunter Lat, auf dem Schulterblatt die Rotatoren
     if (nz < -0.1 && RUECKEN.has(id) && !(id === 'delt_h' && u > 0.85) && u < 1.1 && v > 0.04 && v < 1.06) {
@@ -273,7 +315,7 @@ export function backe(g: 'm' | 'w', N = 2048): Ergebnis {
       const welle = 0.006 * Math.sin(p[0] * 90);
       for (const h of [0.2, 0.32, 0.43]) if (v + welle / hoeheRumpf > h) k++;
     } else if (id === 'serratus') {
-      k = 1 + (((Math.floor((y + 0.6 * z) / 0.026) % 8) + 8) % 8);
+      k = 1 + ((Math.floor(seitenLage(p, v).q) % 8) + 8) % 8;   // ein Finger je Rippe
     } else if (id === 'bizeps') {
       const { t: tt, w } = imGlied(oberarm, p);
       k = w > 0.05 + 0.7 * glatt(0.55, 0.85, tt) ? 1 : 2;     // kurzer und langer Kopf; die Trennung läuft unten seitlich aus
@@ -306,10 +348,6 @@ export function backe(g: 'm' | 'w', N = 2048): Ergebnis {
       const breite = v > 0.14 ? 0.4 * Math.max(0, 1 - (v - 0.14) / 0.32) : 0.4 * Math.max(0, 1 - (0.14 - v) / 0.24);
       s = id === 'strecker' && v < 0.14 ? 0.88 : 0.88 * (1 - glatt(breite - 0.015, breite + 0.015, u)) * glatt(0.05, 0.3, -nz);
     } else if (id === 'bauch_s' && nz > -0.2) {
-      // Ursprungszacken an den unteren Rippen, in Flucht der Sägemuskel-Zacken; abwechselnd lang (Verzahnung)
-      const q = (y + 0.6 * z) / 0.026, j = Math.floor(q), lang = ((j % 2) + 2) % 2;
-      const spitze = 0.5 + 0.07 * lang + 0.16 * Math.abs(q - j - 0.5);       // jede Zacke endet als Finger
-      if (v > 0.3 && u > spitze) k = 1 + (((j % 8) + 8) % 8);
       // Aponeurose des äußeren schrägen Bauchmuskels: schmal neben dem Sixpack, nach unten breiter, Saum am Leistenband
       const rand = uRect(v) + 0.03 + 0.1 * glatt(0.38, 0.05, v);
       const neben = 1 - glatt(rand - 0.015, rand + 0.015, u);
@@ -328,6 +366,10 @@ export function backe(g: 'm' | 'w', N = 2048): Ergebnis {
     teil[i] = e * 16 + k;
     sehne[i] = e === 0 ? 1 : s;
     if (e) phase[i] = faser(id, p);
+    if (id === 'serratus' || (id === 'bauch_s' && v > 0.12)) {
+      const L = seitenLage(p, v);
+      phase[i] = id === 'serratus' ? L.sl * 190 : (L.X * 0.77 - L.Y * 0.64) * 190;
+    }
     // Hautzonen (Kopf, Hände, Füße) wie zur Laufzeit
     const ua = imGlied(unterarm, p);
     hautzone[i] = Math.max(glatt(hals[1] - 0.05, hals[1] - 0.02, y), ua.radius < 0.15 ? glatt(0.9, 0.98, ua.t) : 0, glatt(knoechel[1] + 0.04, knoechel[1] + 0.01, y));
