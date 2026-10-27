@@ -53,16 +53,23 @@ export class Verformer {
     return out;
   }
 
-  // muskel(i) liefert μ für Punkt i; omega gilt für den ganzen Körper
-  verforme(muskel: (i: number) => number, omega: number) {
+  // muskel(i) liefert μ für Punkt i; omega gilt für den ganzen Körper.
+  // Mit bezug (Startmuskel μ0, Startfett ω0) werden Muskelzuwachs und Fettabbau getrennt gerechnet:
+  //   Form = D(μ, ω0) + D(μ0, ω) − D(μ0, ω0)
+  // Ohne Trennung zieht MakeHumans Gewichtsachse beim Abnehmen die Muskeln mit herunter (»maxmuscle-minweight« ist ein
+  // dünner Körper) – ein Jahr Training mit Fettabbau sähe dann kaum anders aus als der Start.
+  verforme(muskel: (i: number) => number, omega: number, bezug?: { mu: number; omega: number }) {
     const { ruhe: pos, kombi } = this;
     const G = this.netz.grund, n = this.netz.punkte;
-    const b = stufen(Math.min(1, omega), new Float32Array(3)), a = new Float32Array(3);
+    const getrennt = !!bezug && Math.abs(bezug.omega - omega) > 1e-4;
+    const b = stufen(Math.min(1, getrennt ? bezug!.omega : omega), new Float32Array(3)), a = new Float32Array(3);
+    const a0 = stufen(bezug?.mu ?? 0, new Float32Array(3)), db = new Float32Array(3);
+    if (getrennt) { const b1 = stufen(Math.min(1, omega), new Float32Array(3)); for (let k = 0; k < 3; k++) db[k] = b1[k] - b[k]; }
     for (let i = 0; i < n; i++) {
       stufen(muskel(i), a);
       let x = G[3 * i], y = G[3 * i + 1], z = G[3 * i + 2];
       for (let k = 0; k < kombi.length; k++) {
-        const c = kombi[k], w = a[c.m] * b[c.g];
+        const c = kombi[k], w = a[c.m] * b[c.g] + (getrennt ? a0[c.m] * db[c.g] : 0);
         if (w === 0) continue;
         x += w * c.d[3 * i]; y += w * c.d[3 * i + 1]; z += w * c.d[3 * i + 2];
       }

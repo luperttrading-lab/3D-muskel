@@ -65,7 +65,7 @@ function zustandAus(entwicklung: Float32Array, pump: Float32Array, mu0: number, 
   }
   farbe.set(darstellung === 'atlas' ? HAUT_OHNE_MUSKEL.atlas : HAUT_OHNE_MUSKEL.entwicklung, 0);
   const muRest = mu0 + (REGELN[modus].muMax - mu0) * 0.5 * (summe / anzahl);
-  return { mu, muRest, omega, gluehen, farbe };
+  return { mu, muRest, omega, bezug: { mu: mu0, omega }, gluehen, farbe };
 }
 
 function Szene({ vergleich }: { vergleich: boolean }) {
@@ -98,7 +98,7 @@ function Szene({ vergleich }: { vergleich: boolean }) {
   }, [feedback]);
   // Vorschau (Evolution): simulierter Stand ohne Pump, Körperfett nach Vorgabe
   const zustand = useMemo(() => vorschau
-    ? zustandAus(vorschau.entwicklung, new Float32Array(ANZAHL_EINHEITEN), MU_START, vorschau.omega, profil.modus, darstellung, new Float32Array(ANZAHL_EINHEITEN), profil.unterStart)
+    ? { ...zustandAus(vorschau.entwicklung, new Float32Array(ANZAHL_EINHEITEN), MU_START, vorschau.omega, profil.modus, darstellung, new Float32Array(ANZAHL_EINHEITEN), profil.unterStart), bezug: { mu: MU_START, omega } }
     : zustandAus(ansicht.entwicklung, ansicht.pump, MU_START, omega, profil.modus, darstellung, gluehen, profil.unterStart),
   [vorschau, ansicht, omega, profil.modus, profil.unterStart, darstellung, gluehen]);
   const start = useMemo(() => zustandAus(new Float32Array(ANZAHL_EINHEITEN), new Float32Array(ANZAHL_EINHEITEN), MU_START, omega, profil.modus, darstellung, new Float32Array(ANZAHL_EINHEITEN), false),
