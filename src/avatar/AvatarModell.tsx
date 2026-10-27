@@ -7,6 +7,7 @@ import * as THREE from 'three';
 import type { Begleiter, KoerperDaten } from './daten';
 import { berechneAnatomie, berechneMasken, hauptEinheit, MAX_JE_PUNKT, type Masken } from './masken';
 import { Verformer, muskelProPunkt } from './morph';
+import { poseMatrizen } from './pose';
 import { EINHEITEN, einheitIndex, SEITEN } from '../engine/muskeln';
 
 export type Darstellung = 'haut' | 'entwicklung' | 'atlas';
@@ -30,6 +31,7 @@ interface Props {
   bewegung: boolean;         // false = keine weichen Übergänge (reduzierte Bewegung)
   position?: [number, number, number];
   basis?: string;
+  pose?: boolean;            // lockere Haltung statt A-Pose (Standard: an)
   onWahl?: (einheit: number) => void;
   onMasken?: (m: Masken, mitten: Map<number, [number, number, number]>) => void;
   onMorphMs?: (ms: number) => void;
@@ -184,9 +186,12 @@ function BegleitNetz({ b, muRest, omega, basis }: { b: Begleiter; muRest: number
 
 const ARM_IDS = ['bizeps', 'trizeps', 'brachialis', 'brachiorad', 'ua_beuger', 'ua_strecker', 'delt_v', 'delt_s', 'delt_h'];
 
-export function AvatarModell({ daten, zustand, darstellung, auswahl, hautton, akzent, gluehStart, bewegung, position, basis = import.meta.env.BASE_URL, onWahl, onMasken, onMorphMs }: Props) {
+export function AvatarModell({ daten, zustand, darstellung, auswahl, hautton, akzent, gluehStart, bewegung, position, basis = import.meta.env.BASE_URL, pose = true, onWahl, onMasken, onMorphMs }: Props) {
   const invalidate = useThree(s => s.invalidate);
   const verformer = useMemo(() => new Verformer(daten.koerper), [daten]);
+  // Haltung: Arme locker seitlich (Skelett und Gewichte aus MakeHuman); gilt ab der nächsten Verformung
+  const poseM = useMemo(() => (daten.skelett ? poseMatrizen(daten.skelett) : null), [daten]);
+  useMemo(() => verformer.setzePose(daten.haut, pose ? poseM : null), [verformer, daten, pose, poseM]);
   const masken = useMemo(() => berechneMasken(daten.koerper, daten.gelenke), [daten]);
   const haut = useLoader(THREE.TextureLoader, `${basis}modelle/haut-${daten.geschlecht}-${hautton}.jpg`);
   const akzentFarbe = useMemo(() => new THREE.Color(akzent), [akzent]);
@@ -219,14 +224,15 @@ export function AvatarModell({ daten, zustand, darstellung, auswahl, hautton, ak
 
   // Muskelmitten (für Kameraführung) und Arm-Kennung (Kleidung nie auf den Armen)
   useEffect(() => {
-    const P = daten.koerper.grund, summe = new Map<number, [number, number, number, number]>();
+    // Mitten in der Haltung, in der die Figur gezeigt wird (für die Kameraführung)
+    const P = daten.koerper.grund, PP = verformer.posiere(P), summe = new Map<number, [number, number, number, number]>();
     for (let i = 0; i < daten.koerper.punkte; i++) {
       const o = i * MAX_JE_PUNKT;
       for (let k = 0; k < MAX_JE_PUNKT; k++) {
         const w = masken.gewicht[o + k];
         if (w < 0.5) break;
         const e = masken.einheit[o + k], s = summe.get(e) ?? [0, 0, 0, 0];
-        s[0] += w * P[3 * i]; s[1] += w * P[3 * i + 1]; s[2] += w * P[3 * i + 2]; s[3] += w;
+        s[0] += w * PP[3 * i]; s[1] += w * PP[3 * i + 1]; s[2] += w * PP[3 * i + 2]; s[3] += w;
         summe.set(e, s);
       }
     }
@@ -265,7 +271,7 @@ export function AvatarModell({ daten, zustand, darstellung, auswahl, hautton, ak
       S2[4 * j + 1] = Math.min(1, summe);
     }
     attr.stat1.needsUpdate = attr.stat2.needsUpdate = attr.klasseA.needsUpdate = attr.klasseB.needsUpdate = true;
-  }, [masken, daten, attr, onMasken]);
+  }, [masken, daten, attr, onMasken, verformer, pose, poseM]);
 
   // Anzeige-Zustand gleitet auf die Zielwerte zu
   const n = zustand.mu.length;
@@ -274,7 +280,7 @@ export function AvatarModell({ daten, zustand, darstellung, auswahl, hautton, ak
   const dirty = useRef(true);
   const farbAnteil = useRef(0);
   const anatAnteil = useRef(0);
-  useEffect(() => { dirty.current = true; invalidate(); }, [zustand, auswahl, darstellung, gluehStart, invalidate]);
+  useEffect(() => { dirty.current = true; invalidate(); }, [zustand, auswahl, darstellung, gluehStart, pose, invalidate]);
 
   const auswahlMenge = useMemo(() => new Set(typeof auswahl === 'number' ? (auswahl ? [auswahl] : []) : auswahl), [auswahl]);
   const aktualisiere = (mu: Float32Array, muRest: number, omega: number) => {

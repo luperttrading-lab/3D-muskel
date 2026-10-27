@@ -3,7 +3,7 @@
 Web-App, in der ein realistischer 3D-Avatar aus deinem eigenen Training entsteht. Jeder abgeschlossene Satz
 verändert sofort die beteiligten Muskeln (Pump, Glühen, Kamerafahrt). Daraus wächst langfristig Muskelmasse,
 die bei Pausen langsam abbaut und beim Wiedereinstieg über das Muskelgedächtnis schneller zurückkommt.
-Alle 33 Muskeln werden **links und rechts getrennt** berechnet (66 Einheiten).
+Alle 34 Muskeln werden **links und rechts getrennt** berechnet (68 Einheiten).
 
 Der Start ist ein **untrainierter Durchschnittskörper**, Mann wie Frau: kein Sixpack, weiche Arme, etwas Bauch.
 
@@ -44,10 +44,10 @@ in den Vordergrund, ob eine neue Fassung da ist; ein Tipp auf die gepunktete Ver
 
 | Bereich | Inhalt |
 |---|---|
-| Avatar | MakeHuman-Körper (Mann 1,79 m, Frau 1,66 m), Haut in drei Tönen, Haare, Augen, Brauen, Wimpern; Shorts bzw. Shorts + Bustier per Shader |
+| Avatar | MakeHuman-Körper (Mann 1,79 m, Frau 1,66 m), Haut in drei Tönen, Haare, Augen, Brauen, Wimpern; Shorts bzw. Shorts + Bustier per Shader; lockere Haltung über ein vereinfachtes MakeHuman-Skelett (Linear Blend Skinning nach der Muskelverformung) |
 | Verformung | je Muskel und Seite eigene Maske; Mischung aus 3 × 3 Muskel-/Fett-Formen; Pump als kurzzeitiger Zuschlag |
 | Training | Pläne (Ganzkörper, Push, Pull, Legs, …), 43 Übungen mit Muskelkoeffizienten, Seite (beide/links/rechts), Gewicht, Wiederholungen, RIR, Schmerz-Markierung |
-| Muskelatlas | Darstellungen *Haut*, *Entwicklung* (Farbskala), *Anatomie*; Muskel antippen → Werte links/rechts, Status, passende Übungen |
+| Muskelatlas | Tabs Vorne/Hinten/Seite, Gruppenleiste (Brust bis Waden), Darstellungen *Haut*, *Entwicklung* (Farbskala), *Anatomie* (Faserverlauf, Faszienlinien, Sehnenzüge); Muskel antippen → Funktion primär/sekundär, Entwicklungsstand links/rechts, beteiligte Übungen |
 | Evolution | Vorher/Nachher-Vergleich, Rang (Lauch → Adonis → Beast), Archetypen mit Hysterese, Verläufe je Muskel |
 | Coach ATLAS | regelbasiert, vier Stile (Kumpel, Drill, Wissenschaftler, Game-Master); stellt keine Diagnosen |
 | Daten | IndexedDB (Dexie), Rückfall auf localStorage; Export/Import als JSON; alles bleibt auf dem Gerät |
@@ -100,11 +100,12 @@ Pipeline:
 MH_DATA=/pfad/makehuman/data MH_SYSTEM=/pfad/makehuman-system-assets npm run assets
 ```
 
-`MH_DATA` ist der `data`-Ordner aus dem MakeHuman-Repository (Basisnetz `hm08`, Targets, Hilfsgruppen),
+`MH_DATA` ist der `data`-Ordner aus dem MakeHuman-Repository (Basisnetz `hm08`, Targets, Hilfsgruppen,
+`rigs/default.mhskel` und `rigs/default_weights.mhw` für die Haltung),
 `MH_SYSTEM` das System-Asset-Paket (Haut, Haare, Augen, Brauen, Wimpern).
 
 ## Lizenz der Körpermodelle
 
-Basisnetz, Targets, Proxies und System-Assets stammen von [MakeHuman](https://static.makehumancommunity.org/makehuman/faq/are_makehuman_files_free.html)
+Basisnetz, Targets, Skelett mit Gewichten, Proxies und System-Assets stammen von [MakeHuman](https://static.makehumancommunity.org/makehuman/faq/are_makehuman_files_free.html)
 und stehen unter **CC0**. Die Software-Werkzeuge von MakeHuman (AGPL) werden nicht verwendet; die Pipeline in
 `tools/` ist eigenständig.

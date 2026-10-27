@@ -1,4 +1,5 @@
 // Lädt und entpackt die Körperdaten (public/modelle/koerper-<m|w>.json, erzeugt von tools/mh-export.mjs).
+import type { Haut, Knochen } from './pose';
 
 export type Geschlecht = 'm' | 'w';
 export const FORM_STUFEN = ['minmuscle', 'averagemuscle', 'maxmuscle'] as const;
@@ -14,6 +15,7 @@ interface RohDaten {
   koerper: Record<string, Abschnitt> & { punkte: number };
   begleiter: RohBegleiter[];
   gelenke: Record<string, [number, number, number]>;
+  skelett?: Knochen[];
   daten: string;
 }
 
@@ -33,6 +35,8 @@ export interface KoerperDaten {
   koerper: FormNetz;
   begleiter: Begleiter[];
   gelenke: Record<string, [number, number, number]>;
+  skelett?: Knochen[];     // vereinfachtes Skelett für die lockere Haltung
+  haut?: Haut;             // Knochengewichte je gemeinsamem Punkt
 }
 
 function base64ZuBytes(b64: string): Uint8Array {
@@ -43,7 +47,7 @@ function base64ZuBytes(b64: string): Uint8Array {
 }
 
 const TYPEN: Record<string, new (b: ArrayBuffer, off: number, n: number) => ArrayBufferView> = {
-  Float32Array, Int16Array, Uint16Array, Uint32Array,
+  Float32Array, Int16Array, Uint16Array, Uint32Array, Uint8Array,
 };
 function ansicht<T>(puffer: ArrayBuffer, a: Abschnitt): T {
   return new TYPEN[a.typ](puffer, a.off, a.n) as T;
@@ -66,12 +70,24 @@ export function entpacke(roh: RohDaten): KoerperDaten {
     dreiecke: ansicht<Uint16Array>(puffer, teil.dreiecke),
   });
   const k = roh.koerper;
+  let haut: Haut | undefined;
+  if (k.knochen && k.knochenGewicht) {
+    const idx = ansicht<Uint8Array>(puffer, k.knochen), roheGew = ansicht<Uint8Array>(puffer, k.knochenGewicht);
+    const gew = new Float32Array(roheGew.length);
+    for (let i = 0; i < gew.length; i += 4) {
+      const summe = roheGew[i] + roheGew[i + 1] + roheGew[i + 2] + roheGew[i + 3] || 1;
+      for (let j = 0; j < 4; j++) gew[i + j] = roheGew[i + j] / summe;
+    }
+    haut = { idx, gew };
+  }
   return {
     geschlecht: roh.geschlecht,
     groesse: roh.groesse,
     koerper: netz({ grund: k.grund, quelle: k.quelle, uv: k.uv, dreiecke: k.dreiecke }, k, k.punkte),
     begleiter: roh.begleiter.map(b => ({ ...netz(b, b.formen, b.punkte), name: b.name, textur: b.textur, alpha: b.alpha })),
     gelenke: roh.gelenke,
+    skelett: roh.skelett,
+    haut,
   };
 }
 

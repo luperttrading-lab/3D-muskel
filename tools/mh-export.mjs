@@ -8,6 +8,8 @@
 //     jung, Ethnien je 1/3). Gespeichert als Grundform (mittel/mittel) + 8 Differenzen (Int16, 0,1 mm)
 //   – Gelenkpunkte (aus den joint-Hilfsgeometrien), für die Platzierung der Muskelmasken
 //   – angepasste Begleitnetze (Augen, Brauen, Wimpern, Haare) über MakeHumans .mhclo-Bindung
+//   – vereinfachtes Skelett (MakeHuman default.mhskel, CC0) mit Gewichten je Punkt für die Pose:
+//     Rumpf (unbewegt) und je Seite Schlüsselbein, Schulter, Oberarm 1/2, Unterarm 1/2, Hand
 // Einheit Meter, y oben, z vorn; Füße auf y = 0.
 
 import fs from 'node:fs';
@@ -133,6 +135,27 @@ function quantisiere(diff) {
   return q;
 }
 
+// Skelett: nur die Knochen, die für die Armhaltung bewegt werden; alles andere zählt zum Rumpf
+const KNOCHEN = ['rumpf', ...['L', 'R'].flatMap(s => ['clavicle', 'shoulder01', 'upperarm01', 'upperarm02', 'lowerarm01', 'lowerarm02', 'hand'].map(k => `${k}.${s}`))];
+const ELTERN = { clavicle: 'rumpf', shoulder01: 'clavicle', upperarm01: 'shoulder01', upperarm02: 'upperarm01', lowerarm01: 'upperarm02', lowerarm02: 'lowerarm01', hand: 'lowerarm02' };
+function knochenFuer(name) {
+  if (KNOCHEN.includes(name)) return KNOCHEN.indexOf(name);
+  const m = name.match(/^(wrist|metacarpal\d|finger\d-\d)\.([LR])$/);
+  return m ? KNOCHEN.indexOf(`hand.${m[2]}`) : 0;
+}
+const skel = JSON.parse(fs.readFileSync(path.join(MH, 'rigs/default.mhskel'), 'utf8'));
+const roheGewichte = JSON.parse(fs.readFileSync(path.join(MH, 'rigs/default_weights.mhw'), 'utf8')).weights;
+// je Punkt des Grundnetzes: Gewicht je vereinfachtem Knochen
+const gewichtJePunkt = new Map();
+for (const [name, liste] of Object.entries(roheGewichte)) {
+  const k = knochenFuer(name);
+  for (const [v, w] of liste) {
+    const m = gewichtJePunkt.get(v) ?? new Map();
+    m.set(k, (m.get(k) ?? 0) + w);
+    gewichtJePunkt.set(v, m);
+  }
+}
+
 const basis = leseObj(path.join(MH, '3dobjs/base.obj'));
 const nAlle = basis.v.length / 3;
 console.log('Grundnetz:', nAlle, 'Punkte,', basis.flaechen.length, 'Flächen');
@@ -190,6 +213,28 @@ for (const [kurz, g] of Object.entries(GESCHLECHTER)) {
   meta.koerper.quelle = puffer.schreibe(Uint16Array.from(ent.quelle));
   meta.koerper.uv = puffer.schreibe(Float32Array.from(ent.uv));
   meta.koerper.dreiecke = puffer.schreibe(Uint16Array.from(ent.dreiecke));
+
+  // Skelett: Kopf und Ende je Knochen aus den Gelenkpunkten der Grundform
+  const gelenkPos = name => {
+    const liste = skel.joints[name];
+    let s = [0, 0, 0];
+    for (const v of liste) { const p = transf(grund, v); s = [s[0] + p[0], s[1] + p[1], s[2] + p[2]]; }
+    return s.map(x => +(x / liste.length).toFixed(5));
+  };
+  meta.skelett = KNOCHEN.map(name => {
+    if (name === 'rumpf') return { name, eltern: -1, kopf: [0, 0, 0], ende: [0, 1, 0] };
+    const [k, seite] = name.split('.'), original = k === 'hand' ? `wrist.${seite}` : name;
+    return { name, eltern: KNOCHEN.indexOf(ELTERN[k] === 'rumpf' ? 'rumpf' : `${ELTERN[k]}.${seite}`), kopf: gelenkPos(skel.bones[original].head), ende: gelenkPos(skel.bones[original].tail) };
+  });
+  // Gewichte: höchstens vier Knochen je Punkt, als Bytes (0–255), Rest an den Rumpf
+  const kIdx = new Uint8Array(nK * 4), kGew = new Uint8Array(nK * 4);
+  koerperIdx.forEach((v, i) => {
+    const liste = [...(gewichtJePunkt.get(v) ?? new Map([[0, 1]]))].sort((a, b) => b[1] - a[1]).slice(0, 4);
+    const summe = liste.reduce((a, [, w]) => a + w, 0) || 1;
+    liste.forEach(([k, w], j) => { kIdx[4 * i + j] = k; kGew[4 * i + j] = Math.round(255 * w / summe); });
+  });
+  meta.koerper.knochen = puffer.schreibe(kIdx);
+  meta.koerper.knochenGewicht = puffer.schreibe(kGew);
 
   for (const [name, set] of Object.entries(gelenkPunkte)) {
     let s = [0, 0, 0];

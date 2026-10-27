@@ -52,9 +52,11 @@ function Boden({ akzent }: { akzent: string }) {
 function Fuehrung({ ziel, mitte, steuerung }: { ziel?: Kameraziel; mitte: THREE.Vector3; steuerung: React.RefObject<OrbitControlsImpl | null> }) {
   const fahrt = useRef<{ az0: number; az1: number; h0: number; h1: number; x0: number; x1: number; d0: number; d1: number; t: number } | null>(null);
   const { camera, invalidate } = useThree();
+  // Eine beim Aufbau schon vorhandene Fahrt (z. B. von der vorigen Seite) nicht wiederholen
+  const ersteFahrt = useRef(ziel?.schluessel);
   useEffect(() => {
     const c = steuerung.current;
-    if (!ziel || !c) return;
+    if (!ziel || !c || ziel.schluessel === ersteFahrt.current) return;
     const az0 = c.getAzimuthalAngle();
     let az1 = ziel.azimut ?? az0;
     while (az1 - az0 > Math.PI) az1 -= 2 * Math.PI;

@@ -3,6 +3,7 @@
 
 import { FORM_STUFEN, GEWICHT_STUFEN, type FormNetz } from './daten';
 import { MAX_JE_PUNKT, normalen, gemeinsameDreiecke, type Masken } from './masken';
+import { haute, type Haut } from './pose';
 
 // Gewichte der drei Stufen (min, mittel, max) für einen Wert 0..1. Oberhalb von 1 wird die Max-Form linear
 // verlängert (bis 1,5) – für die stilisierte »Beast«-Entwicklung im Arcade-Modus.
@@ -18,7 +19,8 @@ interface Kombination { m: number; g: number; d: Float32Array }
 
 export class Verformer {
   readonly netz: FormNetz;
-  readonly pos: Float32Array;          // gemeinsame Punkte
+  readonly ruhe: Float32Array;         // gemeinsame Punkte in der Ruhehaltung (A-Pose), nach der Muskelverformung
+  readonly pos: Float32Array;          // gemeinsame Punkte, ggf. in Pose
   readonly nor: Float32Array;
   readonly posUV: Float32Array;        // aufgefächert auf UV-Punkte (für die GPU)
   readonly norUV: Float32Array;
@@ -27,6 +29,7 @@ export class Verformer {
 
   constructor(netz: FormNetz) {
     this.netz = netz;
+    this.ruhe = new Float32Array(netz.grund);
     this.pos = new Float32Array(netz.grund);
     this.nor = new Float32Array(netz.grund.length);
     this.posUV = new Float32Array(netz.quelle.length * 3);
@@ -39,9 +42,20 @@ export class Verformer {
     }));
   }
 
+  private pose: { haut: Haut; matrizen: Float32Array } | null = null;
+  // Haltung setzen (null = A-Pose); wirkt beim nächsten verforme()
+  setzePose(haut: Haut | undefined, matrizen: Float32Array | null) { this.pose = haut && matrizen ? { haut, matrizen } : null; }
+  // beliebige Ruhepositionen (punkte × 3) in die aktuelle Haltung bringen
+  posiere(quelle: Float32Array): Float32Array {
+    if (!this.pose) return quelle.slice();
+    const out = new Float32Array(quelle.length);
+    haute(quelle, out, this.pose.haut, this.pose.matrizen);
+    return out;
+  }
+
   // muskel(i) liefert μ für Punkt i; omega gilt für den ganzen Körper
   verforme(muskel: (i: number) => number, omega: number) {
-    const { pos, kombi } = this;
+    const { ruhe: pos, kombi } = this;
     const G = this.netz.grund, n = this.netz.punkte;
     const b = stufen(Math.min(1, omega), new Float32Array(3)), a = new Float32Array(3);
     for (let i = 0; i < n; i++) {
@@ -54,11 +68,13 @@ export class Verformer {
       }
       pos[3 * i] = x; pos[3 * i + 1] = y; pos[3 * i + 2] = z;
     }
-    normalen(pos, this.dreieckeG, this.nor);
-    const q = this.netz.quelle;
+    // Haltung nach der Muskelverformung; Normalen aus der geposten Form
+    if (this.pose) haute(pos, this.pos, this.pose.haut, this.pose.matrizen); else this.pos.set(pos);
+    normalen(this.pos, this.dreieckeG, this.nor);
+    const q = this.netz.quelle, P = this.pos;
     for (let j = 0; j < q.length; j++) {
       const s = 3 * q[j];
-      this.posUV[3 * j] = pos[s]; this.posUV[3 * j + 1] = pos[s + 1]; this.posUV[3 * j + 2] = pos[s + 2];
+      this.posUV[3 * j] = P[s]; this.posUV[3 * j + 1] = P[s + 1]; this.posUV[3 * j + 2] = P[s + 2];
       this.norUV[3 * j] = this.nor[s]; this.norUV[3 * j + 1] = this.nor[s + 1]; this.norUV[3 * j + 2] = this.nor[s + 2];
     }
   }
