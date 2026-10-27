@@ -18,13 +18,15 @@ function Ansicht({ g, azimut }: { g: Geschlecht; azimut: number }) {
   const [daten, setDaten] = useState<KoerperDaten>();
   useEffect(() => { ladeKoerper(g).then(setDaten); }, [g]);
   const zustand = useMemo<AvatarZustand>(() => {
-    const mu = new Float32Array(ANZAHL_EINHEITEN).fill(zahl('mu', 0.42));
+    // mus=… : Muskelwert je Einheit (Index 0 = Rest des Körpers), z. B. aus einer Engine-Simulation
+    const liste = q.get('mus')?.split(',').map(Number);
+    const mu = liste?.length === ANZAHL_EINHEITEN ? Float32Array.from(liste) : new Float32Array(ANZAHL_EINHEITEN).fill(zahl('mu', 0.42));
     const einzel = q.get('einzel');
     if (einzel) for (const e of EINHEITEN) if (e.id === einzel && (!q.get('seite') || q.get('seite') === e.seite)) mu[e.index] = zahl('wert', 1);
     const farbe = new Float32Array(ANZAHL_EINHEITEN * 3);
     farbe.set([0.75, 0.72, 0.7]);
     for (let i = 1; i < ANZAHL_EINHEITEN; i++) farbe.set(farbeFuer(i), 3 * i);
-    return { mu, muRest: zahl('mu', 0.42), omega: zahl('omega', g === 'm' ? 0.66 : 0.62), gluehen: new Float32Array(ANZAHL_EINHEITEN), farbe };
+    return { mu, muRest: liste ? mu[0] : zahl('mu', 0.42), omega: zahl('omega', g === 'm' ? 0.66 : 0.62), gluehen: new Float32Array(ANZAHL_EINHEITEN), farbe };
   }, [g]);
   if (!daten) return <div className="text-slate-400 p-4">lädt …</div>;
   return (
