@@ -17,6 +17,7 @@ export interface AvatarZustand {
   mu: Float32Array;          // Muskulatur je Einheit (Index wie EINHEITEN)
   muRest: number;            // Muskulatur außerhalb der Masken (Kopf, Hände, Füße)
   omega: number;             // Körperfett 0..1
+  bezug?: { mu: number; omega: number };   // Startmuskel und Startfett: Muskelzuwachs und Fettabbau getrennt rechnen
   gluehen: Float32Array;     // Stärke des Glühens je Einheit nach dem letzten Satz (0..1)
   farbe: Float32Array;       // RGB je Einheit für Entwicklung/Atlas, Index 0 = Haut ohne Muskel
 }
@@ -218,7 +219,7 @@ function kleidMaterial(map: THREE.Texture, akzent: THREE.Color, gelenke: Koerper
   return { mat, uniforms };
 }
 
-function BegleitNetz({ b, muRest, omega, basis }: { b: Begleiter; muRest: number; omega: number; basis: string }) {
+function BegleitNetz({ b, muRest, omega, bezug, basis }: { b: Begleiter; muRest: number; omega: number; bezug?: { mu: number; omega: number }; basis: string }) {
   const verformer = useMemo(() => new Verformer(b), [b]);
   const textur = useLoader(THREE.TextureLoader, `${basis}modelle/${b.textur}.${b.alpha ? 'png' : 'jpg'}`);
   const geo = useMemo(() => {
@@ -231,11 +232,11 @@ function BegleitNetz({ b, muRest, omega, basis }: { b: Begleiter; muRest: number
   }, [b, verformer]);
   useEffect(() => { textur.colorSpace = THREE.SRGBColorSpace; textur.anisotropy = 4; textur.needsUpdate = true; }, [textur]);
   useEffect(() => {
-    verformer.verforme(() => muRest, omega);
+    verformer.verforme(() => muRest, omega, bezug);
     geo.attributes.position.needsUpdate = true;
     geo.attributes.normal.needsUpdate = true;
     geo.computeBoundingSphere();
-  }, [muRest, omega, geo, verformer]);
+  }, [muRest, omega, bezug?.mu, bezug?.omega, geo, verformer]);
   useEffect(() => () => geo.dispose(), [geo]);
   return (
     <mesh geometry={geo} renderOrder={b.alpha ? 2 : 1} raycast={() => null}>
@@ -396,7 +397,7 @@ export function AvatarModell({ daten, zustand, darstellung, auswahl, hautton, ak
   const aktualisiere = (mu: Float32Array, muRest: number, omega: number) => {
     const t0 = performance.now();
     const muPunkt = muskelProPunkt(masken, mu, muRest);
-    verformer.verforme(muPunkt, omega);
+    verformer.verforme(muPunkt, omega, zustand.bezug);
     // Sichtbare Definition: wächst mit dem Muskel, verschwindet unter Fett
     const glatt = (a: number, b: number, x: number) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
     const fett = 1 - glatt(0.35, 0.95, omega);
@@ -491,7 +492,7 @@ export function AvatarModell({ daten, zustand, darstellung, auswahl, hautton, ak
   return (
     <group position={position}>
       <mesh geometry={geo} material={mat} onClick={tippen} castShadow receiveShadow />
-      {daten.begleiter.map(b => <BegleitNetz key={b.name} b={b} muRest={Math.round(muRest * 50) / 50} omega={Math.round(omega * 50) / 50} basis={basis} />)}
+      {daten.begleiter.map(b => <BegleitNetz key={b.name} b={b} muRest={Math.round(muRest * 50) / 50} omega={Math.round(omega * 50) / 50} bezug={zustand.bezug} basis={basis} />)}
     </group>
   );
 }
