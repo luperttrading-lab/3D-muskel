@@ -1,0 +1,65 @@
+@import "tailwindcss";
+
+/* Gestaltung: Premium-Dunkelblau mit Neon-Akzent (wählbar), Saira für Anzeigen, Barlow für Text. */
+@theme {
+  --color-nacht: #060a14;
+  --color-tiefe: #0b1222;
+  --color-flaeche: #101a30;
+  --color-flaeche-2: #16233f;
+  --color-linie: #22314f;
+  --color-text: #e9eefb;
+  --color-text-2: #a3b0cc;
+  --color-text-3: #7584a6;
+  --color-gut: #2fd68f;
+  --color-warn: #f5b041;
+  --color-krit: #ff6b6b;
+  --color-akzent: var(--akzent);
+  --color-akzent-hell: var(--akzent-hell);
+  --font-display: "Saira", "Barlow", system-ui, sans-serif;
+  --font-text: "Barlow", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+:root {
+  --akzent: #2f8bff;
+  --akzent-hell: #9cc8ff;
+  --akzent-glut: rgb(47 139 255 / 0.35);
+  color-scheme: dark;
+}
+:root[data-akzent="pink"] { --akzent: #ff3fa4; --akzent-hell: #ffa3d3; --akzent-glut: rgb(255 63 164 / 0.35); }
+:root[data-akzent="gruen"] { --akzent: #22d38a; --akzent-hell: #9af0c9; --akzent-glut: rgb(34 211 138 / 0.35); }
+
+html, body, #root { height: 100%; }
+body {
+  margin: 0;
+  background: radial-gradient(120% 60% at 50% 0%, #12203d 0%, transparent 60%), #060a14;
+  color: var(--color-text);
+  font-family: var(--font-text);
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior: none;
+}
+button { cursor: pointer; }
+:focus-visible { outline: 2px solid var(--akzent-hell); outline-offset: 2px; }
+.zahl { font-variant-numeric: tabular-nums; }
+.titel { font-family: var(--font-display); font-stretch: 112%; letter-spacing: 0.01em; }
+.etikett { font-size: 11px; text-transform: uppercase; letter-spacing: 0.09em; color: var(--color-text-3); font-weight: 600; }
+.karte { background: rgb(16 26 48 / 0.82); border: 1px solid var(--color-linie); border-radius: 18px; backdrop-filter: blur(10px); }
+.knopf { display: inline-flex; align-items: center; justify-content: center; gap: 8px; border-radius: 14px; font-weight: 600; padding: 10px 14px; border: 1px solid var(--color-linie); background: var(--color-flaeche-2); transition: transform .1s, background .2s; }
+.knopf:active { transform: scale(0.97); }
+.knopf-haupt { background: var(--akzent); border-color: transparent; color: white; box-shadow: 0 8px 24px var(--akzent-glut); }
+.knopf-gut { background: var(--color-gut); border-color: transparent; color: #04210f; box-shadow: 0 8px 24px rgb(47 214 143 / 0.3); }
+.chip { border: 1px solid var(--color-linie); background: var(--color-tiefe); border-radius: 999px; padding: 6px 12px; font-size: 14px; font-weight: 600; }
+.chip[aria-pressed="true"] { background: var(--akzent); border-color: transparent; color: white; }
+.segment { display: inline-flex; padding: 3px; gap: 2px; border-radius: 999px; background: var(--color-tiefe); border: 1px solid var(--color-linie); }
+.segment > button { border: 0; background: none; padding: 6px 12px; border-radius: 999px; font-size: 13px; font-weight: 600; color: var(--color-text-2); white-space: nowrap; }
+.segment > button[aria-pressed="true"] { background: var(--akzent); color: #fff; box-shadow: 0 0 14px var(--akzent-glut); }
+.balken { height: 6px; border-radius: 3px; background: var(--color-tiefe); overflow: hidden; }
+.balken > i { display: block; height: 100%; border-radius: 3px; background: var(--akzent); }
+.eingabe { background: var(--color-tiefe); border: 1px solid var(--color-linie); border-radius: 12px; padding: 10px 12px; min-width: 0; color: var(--color-text); font-size: 16px; }
+.seite { padding-left: max(16px, env(safe-area-inset-left)); padding-right: max(16px, env(safe-area-inset-right)); }
+
+@keyframes einblenden { from { opacity: 0; transform: translateY(8px) } to { opacity: 1; transform: none } }
+.einblenden { animation: einblenden .3s ease both; }
+@keyframes xp { 0% { opacity: 0; transform: translateY(10px) scale(.9) } 20% { opacity: 1; transform: none } 80% { opacity: 1 } 100% { opacity: 0; transform: translateY(-18px) } }
+.xp-flug { animation: xp 1.8s ease both; }
+@media (prefers-reduced-motion: reduce) { .einblenden, .xp-flug { animation: none; } }

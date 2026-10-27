@@ -1,1 +1,31 @@
-
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>MuscleAtlas 3D</title>
+<meta name="description" content="Fitness-RPG mit realistischem 3D-Körper: jeder Satz verändert sofort die beanspruchten Muskeln.">
+<meta name="theme-color" content="#060a14">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="MuscleAtlas">
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="icon" href="./icon-192.png">
+<link rel="apple-touch-icon" href="./icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Saira:wdth,wght@112,600;112,700;112,800&display=swap">
+<script>
+const APP_VERSION = '0.2.0';          // bei JEDER Änderung hochzählen
+window.APP_VERSION = APP_VERSION;
+</script>
+</head>
+<body>
+<div id="root">
+  <noscript>MuscleAtlas 3D braucht JavaScript.</noscript>
+  <div id="vorlauf" style="height:100%;display:grid;place-items:center;color:#a3b0cc;font:16px system-ui">MuscleAtlas 3D wird geladen …</div>
+</div>
+<script type="module" src="/src/main.tsx"></script>
+</body>
+</html>
