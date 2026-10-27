@@ -1,7 +1,7 @@
 // Prüft die Körperform: Muskelzuwachs bleibt sichtbar, auch wenn gleichzeitig Fett abgebaut wird.
 import { describe, expect, test } from 'vitest';
 import { entpacke } from '../src/avatar/daten';
-import { Verformer, breitenFeld } from '../src/avatar/morph';
+import { Verformer, beinFelder, breitenFeld } from '../src/avatar/morph';
 import roh from '../public/modelle/koerper-m.json?raw';
 
 const daten = entpacke(JSON.parse(roh));
@@ -80,5 +80,33 @@ describe('V-Form', () => {
     for (let i = 0; i < n; i++) if (a[3 * i + 1] > G['head'][1]) kopf = Math.max(kopf, Math.abs(a[3 * i] - c[3 * i]), Math.abs(a[3 * i + 2] - c[3 * i + 2]));
     expect(max).toBeLessThan(1e-6);
     expect(kopf).toBeLessThan(1e-6);
+  });
+});
+
+describe('Beine wachsen mit', () => {
+  const bf = beinFelder(daten.koerper, daten.gelenke);
+  // mittlerer Radius um die Gliedachse bei Anteil t
+  const radius = (P: Float32Array, a: number[], b: number[], t0: number) => {
+    const u = [b[0] - a[0], b[1] - a[1], b[2] - a[2]], l2 = u[0] ** 2 + u[1] ** 2 + u[2] ** 2;
+    let s = 0, k = 0;
+    for (let i = 0; i < n; i++) {
+      if (P[3 * i] < 0.005) continue;
+      const d = [P[3 * i] - a[0], P[3 * i + 1] - a[1], P[3 * i + 2] - a[2]], t = (d[0] * u[0] + d[1] * u[1] + d[2] * u[2]) / l2;
+      if (Math.abs(t - t0) > 0.03) continue;
+      const r = Math.hypot(d[0] - u[0] * t, d[1] - u[1] * t, d[2] - u[2] * t);
+      if (r < 0.13) { s += r; k++; }
+    }
+    return s / k;
+  };
+  const bein = (mu: number, omega: number, b: number) => {
+    const v = new Verformer(daten.koerper);
+    v.setzeFelder([bf.oberschenkel, bf.wade, bf.gesaess].map(feld => ({ feld, L: b, R: b })));
+    v.verforme(() => mu, omega, START);
+    return v.ruhe.slice();
+  };
+  test('ein Jahr Training mit Fettabbau: Oberschenkel und Wade dicker als am Start', () => {
+    const start = bein(START.mu, START.omega, 0), nachher = bein(1.05, 0.5, 0.7);
+    expect(radius(nachher, G['l-upper-leg'], G['l-knee'], 0.5)).toBeGreaterThan(radius(start, G['l-upper-leg'], G['l-knee'], 0.5) * 1.05);
+    expect(radius(nachher, G['l-knee'], G['l-ankle'], 0.3)).toBeGreaterThan(radius(start, G['l-knee'], G['l-ankle'], 0.3) * 1.05);
   });
 });

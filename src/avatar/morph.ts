@@ -21,9 +21,10 @@ interface Kombination { m: number; g: number; d: Float32Array }
 // Muskelformen verbreitern den Rumpf unter der Achsel praktisch nicht; dieses Feld liefert je Punkt die Verschiebung
 // bei voller Breite (b = 1): der Rumpf wird nach Höhe gewichtet seitlich gestreckt und etwas tiefer, die Arme rücken
 // als Ganzes mit der Schulter nach außen (Armanteil aus den Knochengewichten der Haltung).
-export interface BreitenFeld { fx: Float32Array; fz: Float32Array; links: Uint8Array }
+// Wachstumsfeld: Verschiebung je Punkt (punkte × 3) bei voller Ausprägung, getrennt nach linker und rechter Seite
+export interface FormFeld { d: Float32Array; links: Uint8Array }
 export const BREITE_SEITLICH = 0.2, BREITE_TIEFE = 0.07;
-export function breitenFeld(netz: FormNetz, gelenke: Record<string, [number, number, number]>, haut?: Haut, knochen?: { name: string }[]): BreitenFeld {
+export function breitenFeld(netz: FormNetz, gelenke: Record<string, [number, number, number]>, haut?: Haut, knochen?: { name: string }[]): FormFeld {
   const n = netz.punkte, P = netz.grund;
   const yB = gelenke['pelvis'][1], H = gelenke['neck'][1] - yB, schulter = gelenke['l-shoulder'];
   const glatt = (a: number, b: number, x: number) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
@@ -50,14 +51,52 @@ export function breitenFeld(netz: FormNetz, gelenke: Record<string, [number, num
     return Math.min(1, a);
   };
   const vSchulter = (schulter[1] - yB) / H, armVersatz = BREITE_SEITLICH * profil(vSchulter) * schulter[0];
-  const fx = new Float32Array(n), fz = new Float32Array(n), links = new Uint8Array(n);
+  const d = new Float32Array(3 * n), links = new Uint8Array(n);
   for (let i = 0; i < n; i++) {
     const x = P[3 * i], v = (P[3 * i + 1] - yB) / H, a = arm(i), s = x >= 0 ? 1 : -1;
     links[i] = x >= 0 ? 1 : 0;
-    fx[i] = (1 - a) * BREITE_SEITLICH * profil(v) * x + a * s * armVersatz;
-    fz[i] = (1 - a) * BREITE_TIEFE * tiefe(v) * (P[3 * i + 2] - rumpfZ(v));
+    d[3 * i] = (1 - a) * BREITE_SEITLICH * profil(v) * x + a * s * armVersatz;
+    d[3 * i + 2] = (1 - a) * BREITE_TIEFE * tiefe(v) * (P[3 * i + 2] - rumpfZ(v));
   }
-  return { fx, fz, links };
+  return { d, links };
+}
+
+// Beine und Gesäß: MakeHumans Muskelformen machen den Oberschenkel oben eher schmaler (kantiger statt dicker), und beim
+// Fettabbau schrumpfen die Beine mit. Die Felder lassen Oberschenkel und Wade um ihre Achse wachsen (Muskelbauch in
+// der Mitte, Knie und Knöchel fest) und wölben das Gesäß nach hinten.
+export const OBERSCHENKEL_WACHSTUM = 0.22, WADEN_WACHSTUM = 0.16, GESAESS_WACHSTUM = 0.03;
+export function beinFelder(netz: FormNetz, gelenke: Record<string, [number, number, number]>): { oberschenkel: FormFeld; wade: FormFeld; gesaess: FormFeld } {
+  const n = netz.punkte, P = netz.grund, N = normalen(P, gemeinsameDreiecke(netz));
+  const glatt = (a: number, b: number, x: number) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+  const huefte = gelenke['l-upper-leg'], knie = gelenke['l-knee'], knoechel = gelenke['l-ankle'];
+  const links = new Uint8Array(n);
+  for (let i = 0; i < n; i++) links[i] = P[3 * i] >= 0 ? 1 : 0;
+  // radiales Wachstum um die Achse a→b (linke Achse, rechts gespiegelt)
+  const glied = (a: [number, number, number], b: [number, number, number], k: number, profil: (t: number) => number, rMax: number) => {
+    const d = new Float32Array(3 * n), u = [b[0] - a[0], b[1] - a[1], b[2] - a[2]], l2 = u[0] ** 2 + u[1] ** 2 + u[2] ** 2;
+    for (let i = 0; i < n; i++) {
+      const s = P[3 * i] >= 0 ? 1 : -1, x = P[3 * i] * s, y = P[3 * i + 1], z = P[3 * i + 2];
+      const dx = x - a[0], dy = y - a[1], dz = z - a[2], t = (dx * u[0] + dy * u[1] + dz * u[2]) / l2;
+      const rx = dx - u[0] * t, ry = dy - u[1] * t, rz = dz - u[2] * t, r = Math.hypot(rx, ry, rz);
+      const w = k * profil(t) * (1 - glatt(0.75 * rMax, rMax, r));
+      if (w <= 0) continue;
+      d[3 * i] = s * w * rx; d[3 * i + 1] = w * ry; d[3 * i + 2] = w * rz;
+    }
+    return { d, links };
+  };
+  const oberschenkel = glied(huefte, knie, OBERSCHENKEL_WACHSTUM,
+    t => glatt(0.04, 0.32, t) * (1 - glatt(0.82, 1.0, t)) * (0.75 + 0.25 * Math.sin(Math.PI * Math.min(1, Math.max(0, t)))), 0.16);   // Hüfte fest
+  const wade = glied(knie, knoechel, WADEN_WACHSTUM, t => glatt(0.02, 0.16, t) * (1 - glatt(0.5, 0.85, t)), 0.1);
+  // Gesäß: Rückseite unter dem Beckenkamm bis zur Gesäßfalte nach hinten wölben
+  const g = new Float32Array(3 * n);
+  for (let i = 0; i < n; i++) {
+    const x = Math.abs(P[3 * i]), y = P[3 * i + 1], nz = N[3 * i + 2];
+    const hoehe = glatt(huefte[1] - 0.2, huefte[1] - 0.1, y) * (1 - glatt(huefte[1] + 0.02, huefte[1] + 0.12, y));
+    const quer = 1 - glatt(huefte[0] + 0.02, huefte[0] + 0.1, x);
+    const hinten = glatt(-0.25, -0.65, nz);
+    g[3 * i + 2] = -GESAESS_WACHSTUM * hoehe * quer * hinten;
+  }
+  return { oberschenkel, wade, gesaess: { d: g, links } };
 }
 
 export class Verformer {
@@ -86,9 +125,10 @@ export class Verformer {
   }
 
   private pose: { haut: Haut; matrizen: Float32Array } | null = null;
-  private breite: { feld: BreitenFeld; L: number; R: number } | null = null;
-  // V-Form je Seite (0 = Startbreite, 1 = volle Breite); wirkt beim nächsten verforme()
-  setzeBreite(feld: BreitenFeld | null, L = 0, R = 0) { this.breite = feld && (L > 0 || R > 0) ? { feld, L, R } : null; }
+  private felder: { feld: FormFeld; L: number; R: number }[] = [];
+  // Wachstumsfelder je Seite (0 = Start, 1 = volle Ausprägung); wirken beim nächsten verforme()
+  setzeFelder(liste: { feld: FormFeld; L: number; R: number }[]) { this.felder = liste.filter(f => f.L > 0 || f.R > 0); }
+  setzeBreite(feld: FormFeld | null, L = 0, R = 0) { this.setzeFelder(feld ? [{ feld, L, R }] : []); }
   // Haltung setzen (null = A-Pose); wirkt beim nächsten verforme()
   setzePose(haut: Haut | undefined, matrizen: Float32Array | null) { this.pose = haut && matrizen ? { haut, matrizen } : null; }
   // beliebige Ruhepositionen (punkte × 3) in die aktuelle Haltung bringen
@@ -119,9 +159,9 @@ export class Verformer {
         if (w === 0) continue;
         x += w * c.d[3 * i]; y += w * c.d[3 * i + 1]; z += w * c.d[3 * i + 2];
       }
-      if (this.breite) {
-        const { feld, L, R } = this.breite, bs = feld.links[i] ? L : R;
-        x += bs * feld.fx[i]; z += bs * feld.fz[i];
+      for (const { feld, L, R } of this.felder) {
+        const bs = feld.links[i] ? L : R;
+        x += bs * feld.d[3 * i]; y += bs * feld.d[3 * i + 1]; z += bs * feld.d[3 * i + 2];
       }
       pos[3 * i] = x; pos[3 * i + 1] = y; pos[3 * i + 2] = z;
     }
