@@ -107,15 +107,18 @@ MH_DATA=/pfad/makehuman/data MH_SYSTEM=/pfad/makehuman-system-assets npm run ass
 ### Anatomie-Texturpaket
 
 Die Anatomie-Ansicht nutzt je Geschlecht drei Texturen in `public/modelle/` (`anatomie-{m,w}-farbe.jpg`,
-`-hoehe.jpg`, `-karte.png`). Sie werden ohne Grafikprogramm aus dem Körpernetz und den Muskelmasken gebacken:
+`-hoehe.png`, `-karte.png`). Sie werden ohne Grafikprogramm aus dem Körpernetz und den Muskelmasken gebacken:
 
 ```sh
-npm run anatomie     # tools/anatomie-backen.mjs, etwa 20 s je Geschlecht, braucht python3 mit Pillow
+npm run anatomie     # tools/anatomie-backen.mjs, etwa 25 s je Geschlecht, braucht python3 mit Pillow
 ```
 
 `tools/anatomie-kern.ts` wertet je Texel die Masken aus und schneidet die sichtbaren Muskeln nach ihrer echten Form zu
 (Brust, Trapez, Lat, Beckenkamm, Leistenband, Gesäß, Deltamuskel, Wade …). Die Karte trägt je Texel die Einheit;
 zur Laufzeit färbt die App darüber Entwicklung und Auswahl, und ein Tipp trifft den Muskel texelgenau.
+Muskelgrenzen sind Furchen im Relief statt gezeichneter Linien; helle Faszie gibt es nur an Linea alba, Mittellinien und den
+Sehnenzügen des Sixpacks. Fasern sind Bündel mit eigener Helligkeit, Sehnenübergänge fiedern aus. Muskelgewebe bekommt im
+Shader einen feuchten Glanz, Sehnen bleiben seidenmatt.
 
 ## Lizenz der Körpermodelle
 

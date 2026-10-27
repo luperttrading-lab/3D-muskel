@@ -83,6 +83,7 @@ const ATLAS_REF = (() => { const [r, g, b] = atlasFarbe(0.5); return new THREE.V
 function kleidMaterial(map: THREE.Texture, akzent: THREE.Color, gelenke: KoerperDaten['gelenke'], frau: boolean) {
   const mat = new THREE.MeshPhysicalMaterial({
     map, roughness: 0.58, metalness: 0, sheen: 0.35, sheenRoughness: 0.75, sheenColor: new THREE.Color('#ffd9c7'),
+    clearcoat: 0.001, clearcoatRoughness: 0.42,
   });
   const J = (n: string) => gelenke[n];
   const becken = J('pelvis'), huefte = J('l-upper-leg'), knie = J('l-knee'), schulter = J('l-shoulder'), hals = J('neck');
@@ -164,8 +165,10 @@ function kleidMaterial(map: THREE.Texture, akzent: THREE.Color, gelenke: Koerper
         // Kopf, Hände und Füße bleiben in der Anatomie-Ansicht Haut
         diffuseColor.rgb = mix(diffuseColor.rgb, hautFarbe, uAnatomie * vHautZone * (1.0 - decke));
         // Texturpaket (sobald geladen): gemalte Anatomie, pixelgenaue Einheiten, Relief – ersetzt das Prozedurale
+        float gewebe = 0.0;   // 1 = Muskel, 0 = Sehne/Knochen/Haut (für Glanz)
         if (uKarteAn > 0.5) {
           vec4 kt = texture2D(uAnatKarte, vMapUv);
+          gewebe = kt.g * step(0.5, floor(kt.r * 255.0 + 0.5)) * uAnatomie;
           float id = floor(kt.r * 255.0 + 0.5);
           vec4 ec = texture2D(uEinheiten, vec2((id + 0.5) / 128.0, 0.25));   // Farbe der Einheit (Entwicklung bzw. Atlas)
           vec4 ez = texture2D(uEinheiten, vec2((id + 0.5) / 128.0, 0.75));   // r = gewählt
@@ -177,13 +180,22 @@ function kleidMaterial(map: THREE.Texture, akzent: THREE.Color, gelenke: Koerper
           vec3 tex = mix(entw, anat, uAnatomie);
           tex = mix(tex, hautFarbe, kt.b * step(id, 0.5) * uAnatomie);
           diffuseColor.rgb = mix(nachKleid, tex, uFarbAnteil);
-          float hoeheTex = (texture2D(uAnatHoehe, vMapUv).r - 0.5) * 0.012;
+          float hoeheTex = (texture2D(uAnatHoehe, vMapUv).r - 0.5) * 0.016;
           hoehe = (uAnatomie + 0.35 * (uFarbAnteil - uAnatomie)) * hoeheTex - (1.0 - uFarbAnteil) * hautTiefe;
         }`)
+      .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
+        roughnessFactor = mix(roughnessFactor, mix(0.55, 0.44, gewebe), uAnatomie * uKarteAn);`)
       .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
         normal = relief(-vViewPosition, normal, hoehe);`)
+      .replace('#include <clearcoat_normal_fragment_begin>', `#ifdef USE_CLEARCOAT
+        vec3 clearcoatNormal = normal;
+        #endif`)
+      .replace('#include <lights_physical_fragment>', `#include <lights_physical_fragment>
+        #ifdef USE_CLEARCOAT
+        material.clearcoat *= gewebe;   // feuchter Film nur auf Muskelgewebe
+        #endif`)
       .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
-        float randLicht = pow(1.0 - clamp(dot(normal, normalize(vViewPosition)), 0.0, 1.0), 3.0);
+        float randLicht = pow(1.0 - clamp(dot(nonPerturbedNormal, normalize(vViewPosition)), 0.0, 1.0), 3.0);   // Silhouette, nicht Relief
         totalEmissiveRadiance += uAkzent * (vGluehen * 0.9 + vAuswahl * 0.4 + randLicht * 0.22);`);
   };
   return { mat, uniforms };
@@ -324,7 +336,7 @@ export function AvatarModell({ daten, zustand, darstellung, auswahl, hautton, ak
     const laden = <T,>(f: (ok: (x: T) => void, fehler: (e: unknown) => void) => void) => new Promise<T>((ok, fehler) => f(ok, fehler));
     Promise.all([
       laden<THREE.Texture>((ok, f) => tl.load(pfad('farbe.jpg'), ok, undefined, f)),
-      laden<THREE.Texture>((ok, f) => tl.load(pfad('hoehe.jpg'), ok, undefined, f)),
+      laden<THREE.Texture>((ok, f) => tl.load(pfad('hoehe.png'), ok, undefined, f)),
       laden<HTMLImageElement>((ok, f) => il.load(pfad('karte.png'), ok, undefined, f)),
     ]).then(([farbeT, hoeheT, karteBild]) => {
       if (ab) return;
@@ -426,6 +438,7 @@ export function AvatarModell({ daten, zustand, darstellung, auswahl, hautton, ak
     if (Math.abs(ad) > 0.002) { anatAnteil.current += ad * (bewegung ? Math.min(1, dt * 8) : 1); aktiv = true; } else anatAnteil.current = az;
     uniforms.uAnatomie.value = anatAnteil.current;
     mat.roughness = 0.58 - 0.16 * anatAnteil.current;   // Muskelgewebe glänzt leicht feucht
+    mat.clearcoat = 0.001 + 0.12 * anatAnteil.current;     // im Shader nur auf Muskelgewebe
     mat.sheen = 0.02 + 0.33 * (1 - farbAnteil.current);   // Haut-Glanz würde die Farbskalen auswaschen
     if (aktiv || glueht || dirty.current) {
       aktualisiere(a.mu, a.muRest, a.omega);
