@@ -56,6 +56,8 @@ export const MUSKELN: MuskelDefinition[] = [
   { id: 'gastro', name: 'Zwillingswadenmuskel', latein: 'M. gastrocnemius', gruppe: 'Waden', region: 'waden', sichtbar: true, masse: 0.35, oben: false, amax: 0.75, ansicht: 'hinten', antagonisten: ['tibialis'], funktion: ['Fuß strecken – auf die Zehenspitzen', 'Knie beugen'] },
   { id: 'soleus', name: 'Schollenmuskel', latein: 'M. soleus', gruppe: 'Waden', region: 'waden', sichtbar: true, masse: 0.40, oben: false, amax: 0.75, ansicht: 'hinten', funktion: ['Fuß strecken, besonders bei gebeugtem Knie', 'Stand stabilisieren'] },
   { id: 'tibialis', name: 'Schienbeinmuskel', latein: 'M. tibialis anterior', gruppe: 'Waden', region: 'waden', sichtbar: true, masse: 0.10, oben: false, amax: 0.7, ansicht: 'vorn', antagonisten: ['gastro'], funktion: ['Fuß anheben', 'Fußgewölbe stützen'] },
+  // neu ab 0.3: am Ende angefügt, damit die Einheiten-Indizes gespeicherter Daten gleich bleiben
+  { id: 'sartorius', name: 'Schneidermuskel', latein: 'M. sartorius', gruppe: 'Beine', region: 'oberschenkel', sichtbar: true, masse: 0.15, oben: false, amax: 0.8, ansicht: 'vorn', funktion: ['Hüfte beugen und Oberschenkel nach außen drehen', 'Knie beugen'] },
 ];
 
 export const MUSKEL: Record<string, MuskelDefinition> = Object.fromEntries(MUSKELN.map(m => [m.id, m]));
@@ -71,7 +73,7 @@ export const ATLAS_GRUPPEN: AtlasGruppe[] = [
   { id: 'ruecken', name: 'Rücken', muskeln: ['lat', 'trapez_o', 'trapez_m', 'strecker'], ansicht: 'hinten' },
   { id: 'bauch', name: 'Bauch', muskeln: ['bauch_g', 'bauch_s', 'bauch_q', 'iliopsoas'], ansicht: 'vorn' },
   { id: 'gesaess', name: 'Gesäß', muskeln: ['glut_max', 'glut_med', 'glut_min'], ansicht: 'hinten' },
-  { id: 'beine', name: 'Beine', muskeln: ['rect_fem', 'vast_lat', 'vast_med', 'vast_int', 'hamstrings', 'adduktoren'], ansicht: 'vorn' },
+  { id: 'beine', name: 'Beine', muskeln: ['rect_fem', 'vast_lat', 'vast_med', 'vast_int', 'sartorius', 'hamstrings', 'adduktoren'], ansicht: 'vorn' },
   { id: 'waden', name: 'Waden', muskeln: ['gastro', 'soleus', 'tibialis'], ansicht: 'hinten' },
 ];
 export const gruppeVon = (id: string) => ATLAS_GRUPPEN.find(g => g.muskeln.includes(id));

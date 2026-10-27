@@ -103,11 +103,19 @@ export function berechneMasken(netz: FormNetz, gelenke: Record<string, V3>): Mas
     const us = inGlied(unterschenkel, p, nv);
     const beinOben = fenster(os.t, 0.08, 0.97, 0.06) * unter(os.radius, 0.13, 0.02);
     const beinUnten = fenster(us.t, 0.04, 0.86, 0.05) * unter(us.radius, 0.09, 0.015);
-    add('rect_fem', beinOben * ueber(os.nf, 0.62, 0.12) * fenster(os.t, 0.1, 0.85, 0.08));
-    add('vast_lat', beinOben * ueber(os.nl, 0.15, 0.2) * ueber(os.nf, -0.35, 0.2) * fenster(os.t, 0.12, 0.92, 0.08));
-    add('vast_med', beinOben * unter(os.nl, -0.05, 0.2) * ueber(os.nf, 0.05, 0.2) * fenster(os.t, 0.52, 0.98, 0.07));
-    add('adduktoren', beinOben * unter(os.nl, -0.18, 0.2) * fenster(os.nf, -0.6, 0.6, 0.2) * fenster(os.t, 0.0, 0.66, 0.08));
-    add('hamstrings', beinOben * unter(os.nf, -0.3, 0.2) * fenster(os.t, 0.18, 0.95, 0.07));
+    // Schneidermuskel: schmales Band vom vorderen Beckenkamm schräg über den Oberschenkel nach innen hinter das Knie.
+    // Winkel um die Oberschenkelachse: 0 = vorn, + = außen, − = innen
+    // Lage um die Achse aus der Position (nicht der Normale), damit das Band glatt verläuft
+    const dS = sub(p, oberschenkel.a), rS = sub(dS, oberschenkel.u.map(x => x * dot(dS, oberschenkel.u)) as V3);
+    const winkel = Math.atan2(dot(rS, oberschenkel.l), dot(rS, oberschenkel.f)), bahn = 0.55 - 2.5 * os.t;
+    const sart = fenster(os.t, 0.04, 0.97, 0.05) * unter(os.radius, 0.16, 0.02) * unter(Math.abs(winkel - bahn), 0.2, 0.12);
+    add('sartorius', sart);
+    const nebenSart = 1 - 0.85 * sart;
+    add('rect_fem', nebenSart * beinOben * ueber(os.nf, 0.62, 0.12) * fenster(os.t, 0.1, 0.85, 0.08));
+    add('vast_lat', nebenSart * beinOben * ueber(os.nl, 0.15, 0.2) * ueber(os.nf, -0.35, 0.2) * fenster(os.t, 0.12, 0.92, 0.08));
+    add('vast_med', nebenSart * beinOben * unter(os.nl, -0.05, 0.2) * ueber(os.nf, 0.05, 0.2) * fenster(os.t, 0.52, 0.98, 0.07));
+    add('adduktoren', nebenSart * beinOben * unter(os.nl, -0.18, 0.2) * fenster(os.nf, -0.6, 0.6, 0.2) * fenster(os.t, 0.0, 0.66, 0.08));
+    add('hamstrings', nebenSart * beinOben * unter(os.nf, -0.3, 0.2) * fenster(os.t, 0.18, 0.95, 0.07));
     add('gastro', beinUnten * unter(us.nf, -0.15, 0.2) * fenster(us.t, 0.06, 0.55, 0.07));
     add('soleus', beinUnten * unter(us.nf, 0.1, 0.3) * fenster(us.t, 0.42, 0.86, 0.07) * (us.nf < -0.5 ? 0.6 : 1));
     add('tibialis', beinUnten * ueber(us.nf, 0.25, 0.2) * ueber(us.nl, -0.15, 0.2) * fenster(us.t, 0.1, 0.8, 0.07));
@@ -169,6 +177,7 @@ export interface Anatomie {
   rilleHaut: Float32Array; // nur Grenzen, die man bei wenig Fett durch die Haut sieht (Muskel an Muskel)
   klassen: Float32Array;  // punkte × 8: Gewicht je Farbklasse (Nachbarmuskeln haben verschiedene Klassen, 7 = Sehne/Haut)
   bauch: Float32Array;    // Gewicht des geraden Bauchmuskels
+  serratus: Float32Array; // Gewicht des Sägemuskels (für seine Zacken)
 }
 
 const FASERN_JE_METER = 75;
@@ -192,7 +201,7 @@ export function berechneAnatomie(netz: FormNetz, gelenke: Record<string, V3>, m:
     delt_v: achse(schulter, ellbogen, 0.06), delt_s: achse(schulter, ellbogen, 0.06), delt_h: achse(schulter, ellbogen, 0.06),
     bizeps: achse(schulter, ellbogen, 0.05), trizeps: achse(schulter, ellbogen, 0.05), brachialis: achse(schulter, ellbogen, 0.05),
     brachiorad: achse(ellbogen, hand, 0.04), ua_beuger: achse(ellbogen, hand, 0.04), ua_strecker: achse(ellbogen, hand, 0.04),
-    rect_fem: achse(huefte, knie, 0.08), vast_lat: achse(huefte, knie, 0.08), vast_med: achse(huefte, knie, 0.08), hamstrings: achse(huefte, knie, 0.08),
+    rect_fem: achse(huefte, knie, 0.08), sartorius: achse(huefte, knie, 0.08), vast_lat: achse(huefte, knie, 0.08), vast_med: achse(huefte, knie, 0.08), hamstrings: achse(huefte, knie, 0.08),
     adduktoren: faecher(plus(huefte, sub(knie, huefte), 0.55), [-1, 0, 0]),
     gastro: achse(knie, knoechel, 0.055), soleus: achse(knie, knoechel, 0.055), tibialis: achse(knie, knoechel, 0.055),
     brust_o: faecher([schulter[0], schulter[1] - 0.02, schulter[2] + 0.04], [0, 0, 1]),
@@ -225,7 +234,7 @@ export function berechneAnatomie(netz: FormNetz, gelenke: Record<string, V3>, m:
   // Fester Querbezug je Achse, damit der Umfangswinkel stetig bleibt
   const quer = (u: V3): V3 => norm(Math.abs(u[2]) < 0.9 ? cross(u, [0, 0, 1]) : cross(u, [1, 0, 0]));
 
-  const phase = new Float32Array(n), rille = new Float32Array(n), bauch = new Float32Array(n);
+  const phase = new Float32Array(n), rille = new Float32Array(n), bauch = new Float32Array(n), serratus = new Float32Array(n);
   const herr = new Int16Array(n);   // stärkster Anteil je Punkt (0 = Sehne/Haut)
   for (let i = 0; i < n; i++) {
     const x = P[3 * i], p: V3 = [Math.abs(x), P[3 * i + 1], P[3 * i + 2]];
@@ -237,6 +246,7 @@ export function berechneAnatomie(netz: FormNetz, gelenke: Record<string, V3>, m:
       const e = m.einheit[i * MAX_JE_PUNKT + k];
       gewichte.push([e, w]); summe += w;
       if (idVon(e) === 'bauch_g') bauch[i] += w;
+      if (idVon(e) === 'serratus') serratus[i] += w;
     }
     // Faserphase des stärksten Muskels
     const id = gewichte.length ? idVon(gewichte[0][0]) : '', v = VERLAUF[id];
@@ -322,7 +332,7 @@ export function berechneAnatomie(netz: FormNetz, gelenke: Record<string, V3>, m:
   const KLASSEN = 8;
   let klassen = new Float32Array(n * KLASSEN), tmp = new Float32Array(n * KLASSEN);
   for (let i = 0; i < n; i++) klassen[i * KLASSEN + (herr[i] ? klasse.get(gruppe(herr[i])) ?? 0 : 7)] = 1;
-  for (let s = 0; s < 2; s++) {
+  for (let s = 0; s < 3; s++) {
     for (let i = 0; i < n; i++) {
       const nb = nachbarn[i];
       for (let k = 0; k < KLASSEN; k++) {
@@ -333,5 +343,5 @@ export function berechneAnatomie(netz: FormNetz, gelenke: Record<string, V3>, m:
     }
     [klassen, tmp] = [tmp, klassen];
   }
-  return { phase, rille: glaette(rille, 2), rilleHaut: glaette(rilleHaut, 3), bauch, klassen };
+  return { phase, rille: glaette(rille, 2), rilleHaut: glaette(rilleHaut, 3), bauch, serratus, klassen };
 }
