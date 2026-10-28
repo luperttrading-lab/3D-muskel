@@ -116,7 +116,13 @@ npm run anatomie     # tools/anatomie-backen.mjs, etwa 30 s je Geschlecht, brauc
 `tools/anatomie-kern.ts` wertet je Texel die Masken aus und schneidet die sichtbaren Muskeln nach ihrer echten Form zu
 (Brust, Trapez, Lat, Beckenkamm, Leistenband, Gesäß, Deltamuskel, Wade …). An der seitlichen Brustwand verzahnen sich
 fünf Finger des Sägemuskels mit den Ursprungszacken des äußeren schrägen Bauchmuskels entlang einer schrägen Linie vom
-Unterrand des Brustmuskels zum Latissimus; die Fasern beider folgen ihrer echten Richtung. Die Karte trägt je Texel die Einheit;
+Unterrand des Brustmuskels zum Latissimus; die Fasern beider folgen ihrer echten Richtung. Am Rücken läuft der Trapez als
+Drachen vom 12. Brustwirbel zur Wurzel der Schulterblattgräte und an ihr entlang zur Schulterhöhe; darunter liegen
+Untergrätenmuskel und großer Rundmuskel frei (Oberrand des Lat über den unteren Schulterblattwinkel zur Achsel), im Dreieck
+am Schulterblattrand der Rautenmuskel. Die Trizepssehne läuft in den freien Ellbogenhöcker, der Bizeps spitz in eine schmale
+Endsehne, die Aponeurose des äußeren schrägen Bauchmuskels beginnt an der Linie vom Rippenbogen zum Darmbeinstachel.
+Ein Saum von 1,5 Texeln um jede UV-Insel wird mit der über die Kante fortgesetzten Lage gebacken, und die Strangbreite
+richtet sich nach dem Phasengefälle im Raum: so laufen Fasern und Furchen ohne Linie über UV-Nähte. Die Karte trägt je Texel die Einheit;
 zur Laufzeit färbt die App darüber Entwicklung und Auswahl, und ein Tipp trifft den Muskel texelgenau.
 Muskelgrenzen sind Furchen im Relief statt gezeichneter Linien; helle Faszie gibt es nur an Linea alba, Mittellinien und den
 Sehnenzügen des Sixpacks. Fasern sind gezeichnete Stränge mit eigener Helligkeit (in der Farbe, nicht im Relief, damit sie
