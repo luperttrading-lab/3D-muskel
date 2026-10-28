@@ -83,6 +83,33 @@ export function backe(g: 'm' | 'w', N = 2048): Ergebnis {
       dreieck[i] = t; b0[i] = w0; b1[i] = w1;
     }
   }
+  // Saum: Texel bis 1,5 Texel außerhalb der UV-Inseln bekommen die über die Kante fortgesetzte Lage ihres nächsten
+  // Dreiecks. So liest die bilineare Filterung an einer UV-Naht auf beiden Seiten Werte von echten Nachbarpunkten
+  // statt kopierter Randtexel, und die Fasern laufen ohne Versatz über die Naht.
+  {
+    const saumAbstand = new Float32Array(NN2).fill(Infinity);
+    for (let t = 0; t < T.length / 3; t++) {
+      const a = T[3 * t], b = T[3 * t + 1], c = T[3 * t + 2];
+      const ax = UV[2 * a] * N, ay = (1 - UV[2 * a + 1]) * N, bx = UV[2 * b] * N, by = (1 - UV[2 * b + 1]) * N, cx = UV[2 * c] * N, cy = (1 - UV[2 * c + 1]) * N;
+      const flaeche = (bx - ax) * (cy - ay) - (cx - ax) * (by - ay);
+      if (Math.abs(flaeche) < 1e-9) continue;
+      // Höhe über jeder Kante in Texeln (Gewicht −1 entspricht so vielen Texeln außerhalb)
+      const hA = Math.abs(flaeche) / Math.hypot(cx - bx, cy - by), hB = Math.abs(flaeche) / Math.hypot(ax - cx, ay - cy), hC = Math.abs(flaeche) / Math.hypot(bx - ax, by - ay);
+      const x0 = Math.max(0, Math.floor(Math.min(ax, bx, cx) - 2)), x1 = Math.min(N - 1, Math.ceil(Math.max(ax, bx, cx) + 2));
+      const y0 = Math.max(0, Math.floor(Math.min(ay, by, cy) - 2)), y1 = Math.min(N - 1, Math.ceil(Math.max(ay, by, cy) + 2));
+      for (let py = y0; py <= y1; py++) for (let px = x0; px <= x1; px++) {
+        const i = py * N + px;
+        if (dreieck[i] >= 0 && saumAbstand[i] === Infinity) continue;   // im Inneren einer Insel
+        const qx = px + 0.5, qy = py + 0.5;
+        const w0 = ((bx - qx) * (cy - qy) - (cx - qx) * (by - qy)) / flaeche;
+        const w1 = ((cx - qx) * (ay - qy) - (ax - qx) * (cy - qy)) / flaeche;
+        const w2 = 1 - w0 - w1;
+        const aussen = Math.max(-w0 * hA, -w1 * hB, -w2 * hC, 0);
+        if (aussen > 1.5 || aussen >= saumAbstand[i]) continue;
+        saumAbstand[i] = aussen; dreieck[i] = t; b0[i] = w0; b1[i] = w1;
+      }
+    }
+  }
 
   // ---------- 2. Je Texel: Position, Normale, Einheit, Unterteilung, Sehne, Faser ----------
   const J = (n: string): V3 => G[n];
@@ -158,6 +185,16 @@ export function backe(g: 'm' | 'w', N = 2048): Ergebnis {
     return { phi, X, Y, sl, tq, q, saege: tq > grenze && sl > -0.2 * ZACKE && sl < SL + 0.2 * ZACKE };
   };
   const SEITE = new Set(['serratus', 'bauch_s', 'lat', 'brust_u', 'brust_o']);
+  // Schulterblatt (Rumpfhöhe 58 cm, Schultergelenk 19 cm neben der Mitte): unterer Winkel bei u 0,4 / v 0,585 (7. Brust-
+  // wirbel), Gräte von der Wurzel am Innenrand (u 0,36 / v 0,8) nach außen zur Schulterhöhe ansteigend, Innenrand
+  // fast senkrecht. Oberrand des Lat = Unterrand des großen Rundmuskels: über den unteren Winkel, dann schräg zur Achsel.
+  const rotLage = (u: number) => Math.min(1, Math.max(0, (u - 0.4) / 0.6));
+  const latOben = (u: number) => 0.585 + 0.135 * rotLage(u);
+  const graete = (u: number) => 0.8 + 0.07 * Math.min(1, Math.max(0, (u - 0.36) / 0.6));
+  const innenRand = (v: number) => 0.33 + 0.07 * Math.min(1, Math.max(0, (0.75 - v) / 0.165));
+  // Unterrand des Trapez: vom 12. Brustwirbel gerade zur Wurzel der Gräte, dann an der Gräte entlang zur Schulterhöhe
+  const trapUnten = (u: number) => u < 0.36 ? 0.42 + 0.38 * u / 0.36 : graete(u);
+  const imRundmuskel = (u: number, v: number) => u > 0.42 && v < latOben(u) + 0.055;
   // −1 = nicht zuständig (vorn am Sixpack, hinten am Rücken, Achsel und Becken)
   function seitenEinheit(p: V3, v: number, s: 'L' | 'R'): number {
     if (v < 0.18 || v > 0.75) return -1;
@@ -214,7 +251,7 @@ export function backe(g: 'm' | 'w', N = 2048): Ergebnis {
     // Brust vorn: Brustbein frei, Unterrand vom Schwertfortsatz bogenförmig zur Achsel
     if (nz > -0.05 && BRUSTRAUM.has(id) && u < 1.02 && v > 0.45 && v < 0.93 && !(id === 'delt_v' && u > 0.9)) {
       const unten = 0.53 + 0.22 * Math.pow(Math.min(1, u), 1.6), oben = 0.865 + 0.03 * u;
-      if (u > 0.022 && v > unten && v < oben) return ix(v > 0.785 - 0.05 * u ? 'brust_o' : 'brust_u', s);
+      if (u > 0.022 && v > unten && v < oben) return ix(v > 0.815 - 0.085 * u ? 'brust_o' : 'brust_u', s);   // Furche vom Brustbein schräg zur Achsel
       if (id === 'brust_o' || id === 'brust_u') {
         if (v >= oben) return u > 0.18 ? ix('trapez_o', s) : 0;
         if (u <= 0.022) return 0;
@@ -234,15 +271,22 @@ export function backe(g: 'm' | 'w', N = 2048): Ergebnis {
       const se = seitenEinheit(p, v, s);
       if (se >= 0) return se;
     }
-    // Rücken: Trapez als Raute bis zum 12. Brustwirbel, darunter Lat, auf dem Schulterblatt die Rotatoren
+    // Rücken: Trapez als Drachen bis zum 12. Brustwirbel, darunter Lat, auf dem Schulterblatt die Rotatoren
     if (nz < -0.1 && RUECKEN.has(id) && !(id === 'delt_h' && u > 0.85) && u < 1.1 && v > 0.04 && v < 1.06) {
-      const trapBreite = v < 0.42 ? -1 : v < 0.82 ? (v - 0.42) / 0.4 * 0.95 : 0.95 - Math.max(0, v - 0.88) / 0.18 * 0.78;
-      if (u <= trapBreite + 0.01) return ix(v > 0.86 ? 'trapez_o' : 'trapez_m', s);
-      if (u > 0.42 && u < 0.98 && v > 0.6 && v < 0.82) return ix('rotatoren', s);
+      const trapAussen = v < 0.88 ? 0.95 : 0.95 - (v - 0.88) / 0.18 * 0.78;
+      if (v >= trapUnten(u) && u <= trapAussen + 0.01) return ix(v > 0.86 ? 'trapez_o' : 'trapez_m', s);
       if (u < 0.27 - 0.15 * glatt(0.3, 0.44, v) && v < 0.46) return ix('strecker', s);   // Rückenstrecker, oben spitz unter dem Trapez
-      const latOben = 0.6 + 0.14 * Math.min(1, u);
-      if (v < latOben) return ix('lat', s);
-      if (id === 'lat' || id === 'trapez_m' || id === 'rotatoren') return u < 0.3 ? ix('strecker', s) : ix('lat', s);
+      if (v < latOben(u)) return ix('lat', s);
+      // zwischen Trapez, Lat und Deltamuskel frei: Untergrätenmuskel und Rundmuskeln, innen am Schulterblattrand im
+      // Dreieck unter dem Trapez der große Rautenmuskel
+      if (v < graete(u) + 0.01) return ix(u > innenRand(v) ? 'rotatoren' : 'trapez_m', s);
+      if (id === 'lat' || id === 'rotatoren') return u < 0.3 ? ix('strecker', s) : ix('lat', s);
+    }
+    // Ellbogenhöcker (Olecranon) frei unter der Haut: die Trizepssehne läuft in ihn ein, statt an der Gelenkebene
+    // gerade abzubrechen
+    if (OBERARM.has(id) || UNTERARM.has(id)) {
+      const { t, w, radius } = imGlied(oberarm, p);
+      if (radius < 0.08 && (((t - 1.0) * oberarm.laenge) / 0.019) ** 2 + ((Math.PI - Math.abs(w)) * radius / 0.014) ** 2 < 1) return 0;
     }
     // Oberarm: Deltamuskel läuft als V zum Ansatz außen am Oberarm aus; darunter Bizeps vorn, Oberarmmuskel außen
     // unten, Trizeps hinten
@@ -253,11 +297,13 @@ export function backe(g: 'm' | 'w', N = 2048): Ergebnis {
       if (t > 0.08 && t < 1.0 && !jenseits && (id !== '' || radius < 0.08)) {   // auch Ringe ohne Maskenabdeckung
         const dw = Math.abs(Math.atan2(Math.sin(w - 1.4), Math.cos(w - 1.4)));
         if (t < 0.47 - 0.36 * Math.min(1, dw / 2.2) ** 1.2) return ix(w > -1.6 && w < 1.15 ? 'delt_v' : w >= 1.15 && w < 2.1 ? 'delt_s' : 'delt_h', s);
-        if (Math.abs(w) < 0.95 * Math.sin(Math.PI * Math.min(1, Math.max(0, (t - 0.12) / 0.86))) ** 0.4) return ix('bizeps', s);
+        // Bizeps läuft unten spitz aus (schmale Endsehne), daneben liegt der Oberarmmuskel frei
+        const spitz = glatt(0.78, 0.93, t);
+        if (Math.abs(w) < 0.95 * Math.sin(Math.PI * Math.min(1, Math.max(0, (t - 0.12) / 0.86))) ** 0.4 * (1 - 0.65 * spitz)) return ix('bizeps', s);
         if (t > 0.7 && Math.abs(w - 0.95) < 0.5 * glatt(0.7, 0.88, t)) return ix('brachiorad', s);   // Ursprung am Oberarm
         if (w > 0 && w < 1.75 && t > 0.42) return ix('brachialis', s);
         if (Math.abs(w) >= 1.2) return ix('trizeps', s);
-        return ix(w > 0 ? 'brachialis' : 'bizeps', s);
+        return ix(w > 0 || spitz > 0.3 ? 'brachialis' : 'bizeps', s);
       }
     }
     // Unterarm: Oberarmspeichenmuskel daumenseitig vorn, Beuger innen, Strecker außen/hinten
@@ -316,14 +362,18 @@ export function backe(g: 'm' | 'w', N = 2048): Ergebnis {
       for (const h of [0.2, 0.32, 0.43]) if (v + welle / hoeheRumpf > h) k++;
     } else if (id === 'serratus') {
       k = 1 + ((Math.floor(seitenLage(p, v).q) % 8) + 8) % 8;   // ein Finger je Rippe
+    } else if (id === 'rotatoren') {
+      k = imRundmuskel(u, v) ? 1 : 0;                         // großer Rundmuskel als Strang an der Unterkante
     } else if (id === 'bizeps') {
       const { t: tt, w } = imGlied(oberarm, p);
       k = w > 0.05 + 0.7 * glatt(0.55, 0.85, tt) ? 1 : 2;     // kurzer und langer Kopf; die Trennung läuft unten seitlich aus
+      s = 0.8 * glatt(0.82, 0.9, tt) * (1 - glatt(0.12, 0.22, Math.abs(w - 0.05)));   // schmale Endsehne zur Ellenbeuge
     } else if (id === 'trizeps') {
       const { t: tt, w } = imGlied(oberarm, p), hinten = Math.PI - Math.abs(w);
       k = w > 0 && w < 2.45 ? 1 : 2;                          // seitlicher und langer Kopf
-      const halb = 0.24 * (tt - 0.66) / 0.32;
-      s = 0.78 * (1 - glatt(halb - 0.03, halb + 0.03, hinten)) * glatt(0.62, 0.68, tt);   // Trizepssehne, nach unten breiter
+      // Sehnenplatte im unteren Oberarm: oben spitz, dann breit bis in den Ellbogenhöcker (Hufeisen der Köpfe drumherum)
+      const halb = 0.1 + 0.2 * Math.max(0, Math.sin(Math.PI * Math.min(1, Math.max(0, (tt - 0.6) / 0.6)))) ** 0.8;
+      s = 0.78 * (1 - glatt(halb - 0.03, halb + 0.03, hinten)) * glatt(0.6, 0.68, tt);
     } else if (id === 'gastro') {
       const { t: tt, w } = imGlied(unterschenkel, p);
       k = w > 0 ? 1 : 2;                                        // äußerer und innerer Kopf
@@ -349,10 +399,12 @@ export function backe(g: 'm' | 'w', N = 2048): Ergebnis {
       s = id === 'strecker' && v < 0.14 ? 0.88 : 0.88 * (1 - glatt(breite - 0.015, breite + 0.015, u)) * glatt(0.05, 0.3, -nz);
     } else if (id === 'bauch_s' && nz > -0.2) {
       // Aponeurose des äußeren schrägen Bauchmuskels: schmal neben dem Sixpack, nach unten breiter, Saum am Leistenband
-      const rand = uRect(v) + 0.03 + 0.1 * glatt(0.38, 0.05, v);
+      // Muskel-Sehnen-Grenze: am Rippenbogen dicht am Sixpack, auf Nabelhöhe in der Medioklavikularlinie, unten zum
+      // vorderen Darmbeinstachel
+      const rand = uRect(v) + 0.03 + 0.2 * glatt(0.45, 0.08, v) + 0.1 * glatt(0.16, 0.04, v);   // unten zum Darmbeinstachel
       const neben = 1 - glatt(rand - 0.015, rand + 0.015, u);
       const leiste = (1 - glatt(0.02, 0.06, v - vLeiste(u))) * (1 - glatt(0.58, 0.66, u));
-      s = 0.85 * Math.max(neben, leiste) * (1 - glatt(0.42, 0.52, v));
+      s = 0.75 * Math.max(neben, leiste) * (1 - glatt(0.42, 0.52, v));
     } else if (id === 'glut_max') {
       const { beta } = beckenLage(p);
       s = 0.8 * (1 - glatt(1.7, 2.1, beta)) * (1 - glatt(-0.2, -0.1, v));   // außen unten in den Tractus iliotibialis
@@ -361,11 +413,22 @@ export function backe(g: 'm' | 'w', N = 2048): Ergebnis {
       if (imTFL(w, v)) k = 1;                                    // Spanner der Oberschenkelbinde als eigener Bauch
       else s = 0.6 * (1 - glatt(-0.13, -0.05, v));              // Ansatzsehne am großen Rollhügel
     } else if (id === 'trapez_o' || id === 'trapez_m') {
+      if (id === 'trapez_m' && nz < 0 && v < trapUnten(u)) k = 1;   // Rautenmuskel unter dem Trapezrand
       s = 0.8 * (1 - glatt(0.05, 0.12, u)) * glatt(0.8, 0.88, v) * glatt(0.1, 0.4, -nz);   // Sehnenspiegel am Nacken
     }
     teil[i] = e * 16 + k;
     sehne[i] = e === 0 ? 1 : s;
     if (e) phase[i] = faser(id, p);
+    if (id === 'rotatoren') {
+      // Untergrätenmuskel: Fächer zum Oberarmkopf; großer Rundmuskel: Strang parallel zum Lat-Rand
+      if (k === 1) { const steil = 0.135 * hoeheRumpf / (0.6 * W), l = Math.hypot(1, steil); phase[i] = (-steil * p[0] + p[1]) / l * 190; }
+      else phase[i] = Math.atan2(p[1] - (yB + 0.8 * hoeheRumpf), 1.05 * W - p[0]) * 0.09 * 190;
+    } else if (id === 'trapez_m' && nz < 0) {
+      // Trapez Mitte und aufsteigender Teil: Fächer zur Gräte (unten schräg aufsteigend, oben quer);
+      // Rautenmuskel: von der Wirbelsäule schräg nach außen unten zum Schulterblattrand
+      if (k === 1) phase[i] = (0.6 * p[0] + p[1]) / Math.hypot(1, 0.6) * 190;
+      else phase[i] = Math.atan2(p[1] - (yB + 0.83 * hoeheRumpf), 0.6 * W - p[0]) * 0.12 * 190;
+    }
     if (id === 'serratus' || (id === 'bauch_s' && v > 0.12)) {
       const L = seitenLage(p, v);
       phase[i] = id === 'serratus' ? L.sl * 190 : (L.X * 0.77 - L.Y * 0.64) * 190;
@@ -555,6 +618,18 @@ export function backe(g: 'm' | 'w', N = 2048): Ergebnis {
   const SEHNE: V3 = [234, 227, 224], KNOCHEN: V3 = [212, 196, 176], FASZIE: V3 = [238, 218, 210];
   const lin = (c: number) => { const x = c / 255; return x <= 0.04045 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4; };
   let lumSumme = 0, lumAnzahl = 0;
+  // mittlere Texelgröße der Muskelflächen im Raum (Median der Nachbarabstände)
+  const TEXEL = (() => {
+    const ds: number[] = [];
+    for (let i = 0; i + 1 < NN2; i += 7) {
+      if (dreieck[i] < 0 || dreieck[i + 1] < 0 || !einheit[i]) continue;
+      const d = Math.hypot(pos[3 * i + 3] - pos[3 * i], pos[3 * i + 4] - pos[3 * i + 1], pos[3 * i + 5] - pos[3 * i + 2]);
+      if (d < 0.006) ds.push(d);
+    }
+    ds.sort((a, b) => a - b);
+    return ds[Math.floor(ds.length / 2)];
+  })();
+  console.log(`${g}: Texel im Mittel ${(TEXEL * 1000).toFixed(2)} mm`);
   for (let py = 0; py < N; py++) for (let px = 0; px < N; px++) {
     const i = py * N + px;
     if (dreieck[i] < 0) continue;
@@ -569,11 +644,17 @@ export function backe(g: 'm' | 'w', N = 2048): Ergebnis {
     let bund = 0.5, naht = 0, strahl = 0, zufall = 0;
     if (e) {
       const ph = phase[i];
-      // Phasenänderung je Texel in beiden Richtungen: wo die Textur für feine Stränge zu grob ist, doppelt so breite
-      // Stränge (zweite Stufe) statt Ausblenden
-      const dx = px + 1 < N && dreieck[i + 1] >= 0 && einheit[i + 1] === e ? Math.abs(phase[i + 1] - ph) : 0;
-      const dy = py + 1 < N && dreieck[i + N] >= 0 && einheit[i + N] === e ? Math.abs(phase[i + N] - ph) : 0;
-      const nb = Math.max(dx < 0.5 ? dx : 0, dy < 0.5 ? dy : 0);
+      // Phasengefälle je Meter (3D), umgerechnet auf ein mittleres Texel: wo die Textur für feine Stränge zu grob ist,
+      // doppelt so breite Stränge (zweite Stufe) statt Ausblenden. Im Raum gemessen, damit beide Seiten einer UV-Naht
+      // (andere Lage und Dichte der Insel) dieselbe Strangbreite wählen.
+      const gefaelle = (j: number) => {
+        if (j < 0 || dreieck[j] < 0 || einheit[j] !== e) return -1;
+        const dp = Math.abs(phase[j] - ph), d3 = Math.hypot(pos[3 * j] - x, pos[3 * j + 1] - y, pos[3 * j + 2] - z);
+        return dp < 0.5 && d3 > 1e-5 && d3 < 0.006 ? dp / d3 : -1;
+      };
+      const gRichtung = (a: number, b: number) => { const ga = gefaelle(a); return ga >= 0 ? ga : Math.max(0, gefaelle(b)); };
+      const gx = gRichtung(px + 1 < N ? i + 1 : -1, px > 0 ? i - 1 : -1), gy = gRichtung(py + 1 < N ? i + N : -1, py > 0 ? i - N : -1);
+      const nb = 0.9 * TEXEL * Math.hypot(gx, gy);
       const grob = glatt(0.13, 0.2, 1.32 * nb), aa = 1 - glatt(0.15, 0.24, 0.66 * nb);
       const verzug = 0.55 * (rauschen(x * 30, y * 30, z * 30) - 0.5) + 0.18 * (rauschen(x * 140, y * 140, z * 140) - 0.5);
       const strang = (f: number) => {
